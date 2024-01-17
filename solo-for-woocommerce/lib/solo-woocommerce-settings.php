@@ -26,7 +26,7 @@ $tab = isset($_GET['tab']) ? $_GET['tab'] : $default_tab;
 $solo_woocommerce = new solo_woocommerce;
 
 // Define default variables
-$token = $tip_usluge = $jezik_ = $valuta_ = $prikazi_porez = $tip_racuna = $rok_placanja = $akcija = $posalji = $naslov = $poruka = '';
+$token = $tip_usluge = $jezik_ = $prikazi_porez = $tip_racuna = $rok_placanja = $iban = $akcija = $posalji = $naslov = $poruka = '';
 
 // Create variables from settings
 $settings = get_option('solo_woocommerce_postavke');
