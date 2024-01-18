@@ -640,7 +640,7 @@ class solo_woocommerce {
 
 				// Create POST request from order details
 				$i = 0;
-				$api_request .= 'token=' . $token . PHP_EOL;
+				$api_request = 'token=' . $token . PHP_EOL;
 				if (!isset($tip_usluge)) $tip_usluge = 1;
 				$api_request .= '&tip_usluge=' . $tip_usluge . PHP_EOL;
 				if (!isset($prikazi_porez)) $prikazi_porez = 0;
@@ -660,7 +660,8 @@ class solo_woocommerce {
 					$item_quantity = $item->get_quantity();
 
 					$taxes = WC_Tax::get_rates($item->get_tax_class());
-					$rates = array_shift($taxes);
+					$rates = isset($taxes) ? array($taxes) : [];
+					$rates = array_shift($rates);
 					$item_tax = round(array_shift($rates));
 
 					$item_ = $item['variation_id'] ? wc_get_product($item['variation_id']) : wc_get_product($item['product_id']);
