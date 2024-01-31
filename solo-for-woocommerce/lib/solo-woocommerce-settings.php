@@ -188,7 +188,9 @@ switch($tab):
 					'ppec_paypal' => __('PayPal', 'solo-for-woocommerce'),
 					'ppcp-gateway' => __('PayPal', 'solo-for-woocommerce'),
 					'corvuspay' => __('CorvusPay (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'pikpay' => __('Monri (kartice, fiskalizacija)', 'solo-for-woocommerce')
+					'pikpay' => __('Monri (kartice, fiskalizacija)', 'solo-for-woocommerce'),
+					'mypos_virtual' => __('myPOS (kartice, fiskalizacija)', 'solo-for-woocommerce'),
+					'wooplatnica-croatia' => __('Uplatnica', 'solo-for-woocommerce'),
 				);
 
 				// Show only available payments

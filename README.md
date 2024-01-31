@@ -30,7 +30,7 @@ Preuzmi [najnoviju verziju dodatka](https://github.com/coax/solo-for-woocommerce
 <sup>Solo automatski fiskalizira račune s načinom plaćanja kartice ili čekovi tako da se ne moraš brinuti za to</sup>
 
 ### Načini plaćanja:
-Dodatak automatski prepoznaje načine plaćanja u WooCommerce (ako su dostupni/omogućeni): Direct bank transfer, Check payments, Cash on delivery, Stripe (Credit Card), Stripe (SEPA Direct Debit), PayPal, CorvusPay (Credit Card), Braintree (Credit Card), Braintree (PayPal), Monri (Credit Card).
+Dodatak automatski prepoznaje načine plaćanja u WooCommerce (ako su dostupni/omogućeni): Direct bank transfer, Check payments, Cash on delivery, Stripe (Credit Card), Stripe (SEPA Direct Debit), PayPal, Braintree (Credit Card), Braintree (PayPal), CorvusPay, PikPay (Monri), myPOS Checkout, Payment slip or mobile banking (Uplatnica).
 
 Pri kreiranju dokumenta u Solo, dodatak će automatski poslati informacije o načinu plaćanja i fiskalizaciji (npr. Direct bank transfer = Transakcijski račun koji se ne fiskalizira, Stripe Credit Card = Kartice i fiskalizira se).
 

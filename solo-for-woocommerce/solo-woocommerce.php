@@ -626,6 +626,16 @@ class solo_woocommerce {
 						$nacin_placanja = 3;
 						$fiskalizacija = 1;
 						break;
+					// myPOS (Credit Card)
+					case 'mypos_virtual':
+						$nacin_placanja = 3;
+						$fiskalizacija = 1;
+						break;
+					// Uplatnica
+					case 'wooplatnica-croatia':
+						$nacin_placanja = 1;
+						$fiskalizacija = 0;
+						break;
 					// Stop
 					default:
 						return;
