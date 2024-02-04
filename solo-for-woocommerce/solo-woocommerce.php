@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.0
+ * Version: 1.1
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -21,7 +21,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION'))
-	define('SOLO_VERSION', '1.0');
+	define('SOLO_VERSION', '1.1');
 
 //// Activate plugin
 register_activation_hook(
@@ -536,8 +536,8 @@ class solo_woocommerce {
 			foreach ($settings as $key => $value) {
 				${$key} = $value;
 				// Find document type and trigger for this order
-				if ($key==$payment_method . '_') $document_type = $value;
-				if ($key==$payment_method . '__') $trigger = $value;
+				if ($key==$payment_method . '1') $document_type = $value;
+				if ($key==$payment_method . '2') $trigger = $value;
 			}
 		}
 
@@ -550,8 +550,7 @@ class solo_woocommerce {
 			$exists = $wpdb->get_var("SELECT order_id FROM $table_name WHERE order_id=$order_id");
 
 			// Proceed on "checkout" or "completed"
-			if (($new_status=='on-hold' && $old_status=='pending' && $trigger=$new_status && !$exists) || ($new_status=='completed' && $old_status<>$new_status && $trigger=$new_status && !$exists)) {
-
+			if (($old_status=='pending' && $new_status=='on-hold' && $trigger==1 && !$exists) || ($old_status=='pending' && $new_status=='processing' && $trigger==1 && !$exists) || ($new_status=='completed' && $old_status<>$new_status && $trigger==2 && !$exists)) {
 				// Get order information
 				$date_created = $order->get_date_created();
 				$kupac_ime = $order->get_billing_first_name();

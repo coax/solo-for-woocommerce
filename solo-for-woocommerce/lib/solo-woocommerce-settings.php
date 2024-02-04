@@ -19,6 +19,35 @@ if (!defined('WPINC')) {
 	die;
 }
 
+// Version check
+$version_check = get_transient('solo_tag');
+$tag = $installed = 'v' . SOLO_VERSION;
+if ($version_check<>$installed) {
+	$tag = get_transient('solo_tag');
+	$url = get_transient('solo_url');
+
+	if (!$version_check) {
+		$opts = ['http' => ['method' => 'GET', 'header' => ['User-Agent: PHP']]];
+		$context = stream_context_create($opts);
+		$json = file_get_contents('https://api.github.com/repos/coax/solo-for-woocommerce/releases', false, $context);
+		$decoded_json = json_decode($json, true);
+		if (isset($decoded_json[0]['name'])) {
+			$tag = $decoded_json[0]['name'];
+			$url = $decoded_json[0]['assets'][0]['browser_download_url'];
+		}
+		// Create temporary transients (instead session)
+		set_transient('solo_tag', $tag, 60*60*12);
+		set_transient('solo_url', $url, 60*60*12);
+	}
+
+	if ($installed<>$tag) {
+?>
+      <div class="notice notice-warning is-dismissible"><p><?php echo __('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo $tag; ?></a></p><p><a href="<?php echo $url; ?>" class="button-secondary"><?php echo __('Preuzmi novu verziju', 'solo-for-woocommerce'); ?></a></p></div>
+<?php
+	}
+}
+
+// Tabs
 $default_tab = null;
 $tab = isset($_GET['tab']) ? $_GET['tab'] : $default_tab;
 
@@ -66,8 +95,11 @@ switch($tab):
             <th>
               <label for="token"><?php echo __('API token', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši svoj API token. Token ćeš pronaći u web servisu klikom na Postavke.', 'solo-for-woocommerce'); ?>"></sup></label>
             </th>
-            <td>
-              <input type="text" name="solo_woocommerce_postavke[token]" id="token" value="<?php echo $token; ?>" autocorrect="off" autocomplete="off" maxlength="33" placeholder="" class="regular-text">
+            <td class="mailserver-pass-wrap">
+              <span class="wp-pwd">
+                <input type="password" name="solo_woocommerce_postavke[token]" id="token" value="<?php echo $token; ?>" autocorrect="off" autocomplete="off" maxlength="33" placeholder="" class="regular-text" class="mailserver-pass-wrap">
+                <button type="button" class="button wp-hide-pw hide-if-no-js" id="toggle"><span class="dashicons dashicons-visibility"></span></button>
+              </span>
               <p class="description"><?php if ($token==''): ?><?php echo __('Upiši i spremi promjene kako bi se otvorile ostale opcije.', 'solo-for-woocommerce'); ?><?php else: ?><a href="#" class="provjera"><?php echo __('Provjeri valjanost tokena', 'solo-for-woocommerce'); ?></a><?php endif; ?></p>
             </td>
           </tr>
@@ -198,11 +230,11 @@ switch($tab):
 					$gateway_title = $translations[$gateway_id];
 
 					// Dynamic variable error handling
-					if (isset(${$gateway_id . '_'})) {
-						$dynamic_var_ = ${$gateway_id . '_'};
-						$dynamic_var__ = ${$gateway_id . '__'};
+					if (isset(${$gateway_id . '1'})) {
+						$dynamic_var1 = ${$gateway_id . '1'};
+						$dynamic_var2 = ${$gateway_id . '2'};
 					} else {
-						$dynamic_var_ = $dynamic_var__ = '';
+						$dynamic_var1 = $dynamic_var2 = '';
 					}
 ?>
       <div class="card">
@@ -210,22 +242,22 @@ switch($tab):
         <p><?php echo $gateway_description; ?></p>
         <hr>
         <label for="<?php echo esc_attr($gateway_id); ?>"><?php echo __('Automatski kreiraj', 'solo-for-woocommerce'); ?></label>
-        <select name="solo_woocommerce_postavke[<?php echo esc_attr($gateway_id); ?>_]" id="<?php echo esc_attr($gateway_id); ?>">
+        <select name="solo_woocommerce_postavke[<?php echo esc_attr($gateway_id); ?>1]" id="<?php echo esc_attr($gateway_id); ?>">
 <?php
 					$types = [__('ništa', 'solo-for-woocommerce') => '', __('račun', 'solo-for-woocommerce') => 'racun', __('ponudu', 'solo-for-woocommerce') => 'ponuda'];
 
 					foreach ($types as $key => $value) {
-						echo '<option value="' . $value . '"' . (($dynamic_var_==$value) ? ' selected' : '') . '>' . $key . '</option>';
+						echo '<option value="' . $value . '"' . (($dynamic_var1==$value) ? ' selected' : '') . '>' . $key . '</option>';
 					}
 ?>
         </select>
-        <label for="<?php echo esc_attr($gateway_id); ?>"><?php echo __('u koraku', 'solo-for-woocommerce'); ?></label>
-        <select name="solo_woocommerce_postavke[<?php echo esc_attr($gateway_id); ?>__]" id="<?php echo esc_attr($gateway_id); ?>">
+        <label for="<?php echo esc_attr($gateway_id); ?>"><?php echo __('kada', 'solo-for-woocommerce'); ?></label>
+        <select name="solo_woocommerce_postavke[<?php echo esc_attr($gateway_id); ?>2]" id="<?php echo esc_attr($gateway_id); ?>">
 <?php
-					$actions = ["Checkout" => "on-hold", "Completed" => "completed"];
+					$actions = ["primiš narudžbu (bez uplate)" => 1, "kupac uplati" => 2];
 
 					foreach ($actions as $key => $value) {
-						echo '<option value="' . $value . '"' . (($dynamic_var__==$value) ? ' selected' : '') . '>' . $key . '</option>';
+						echo '<option value="' . $value . '"' . (($dynamic_var2==$value) ? ' selected' : '') . '>' . $key . '</option>';
 					}
 ?>
         </select>
@@ -235,8 +267,8 @@ switch($tab):
 			}
 ?>
       <br><div class="notice notice-info inline">
-        <p><?php echo __('<b>Checkout</b> korak se izvršava čim kupac napravi narudžbu neovisno o tipu plaćanja', 'solo-for-woocommerce'); ?></p>
-        <p><?php echo __('<b>Completed</b> korak se izvršava kada narudžbu obilježiš kao <u>završenu</u> u WooCommerce administraciji ili kada naplata karticom bude uspješna (automatski)', 'solo-for-woocommerce'); ?></p>
+        <p><?php echo __('Akcija <b>"primiš narudžbu (bez uplate)"</b> se izvršava čim kupac napravi narudžbu neovisno o tipu plaćanja. Takve narudžbe će imati status <span class="status processing">Processing / U obradi</span> ili <span class="status on-hold">On hold / Na čekanju</span> u WooCommerce popisu narudžbi.', 'solo-for-woocommerce'); ?></p>
+        <p><?php echo __('Akcija <b>"kupac uplati"</b> se izvršava kada narudžbu obilježiš kao <span class="status completed">Completed / Završeno</span> u WooCommerce popisu narudžbi ili kada naplata karticom bude uspješna (trebalo bi automatski promijeniti status).', 'solo-for-woocommerce'); ?></p>
       </div>
       <?php submit_button(__('Spremi promjene', 'solo-for-woocommerce')); ?>
 <?php
@@ -365,18 +397,22 @@ switch($tab):
 			}
 
 			foreach($results as $row) {
-				// Beautify zeroes
+				$api_request = $row->api_request;
+				$api_request = preg_replace('/token=[a-zA-Z0-9]{29}/', 'token=*****************************', $api_request);
+				$api_request = nl2br($api_request);
+				$api_response = $row->api_response;
+				$api_response = nl2br($api_response);
+				$created = $row->created;
 				$updated = $row->updated;
 				if (!$updated || $updated=='0000-00-00 00:00:00') $updated = '&ndash;';
-				// Check if sent to customer
 				$sent = $row->sent;
 				if (!$sent || $sent=='0000-00-00 00:00:00') $sent = '&ndash;';
 ?>
           <tr class="shrink">
             <td><p><a href="post.php?post=<?php echo $row->order_id; ?>&action=edit"><?php echo $row->order_id; ?></a></p></td>
-            <td><p><?php echo nl2br($row->api_request); ?></p></td>
-            <td><p><?php echo nl2br($row->api_response); ?></p></td>
-            <td><p><?php echo $row->created . '<br>' . timeago($row->created); ?></p></td>
+            <td><p><?php echo $api_request; ?></p></td>
+            <td><p><?php echo $api_response; ?></p></td>
+            <td><p><?php echo $created . '<br>' . timeago($created); ?></p></td>
             <td><p><?php echo $updated . '<br>' . timeago($updated); ?></p></td>
             <td><p><?php echo $sent . '<br>' . timeago($sent); ?></p></td>
           </tr>

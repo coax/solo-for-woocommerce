@@ -63,4 +63,22 @@ jQuery(document).ready(function($) {
 			}
 		});
 	});
+
+	// Password
+	var password = $('[type=password]'), toggle = $('#toggle'), timeout = '';
+	toggle.on('click', function(e) {
+		e.preventDefault();
+		if (password.prop('type')=='password') {
+			password.prop('type', 'text');
+			$('span', toggle).removeClass('dashicons-visibility').addClass('dashicons-hidden');
+			timeout = setTimeout(togglePassword, 3000);
+		} else {
+			clearTimeout(timeout);
+			togglePassword();
+		}
+	});
+	function togglePassword() {
+		password.prop('type', 'password');
+		$('span', toggle).removeClass('dashicons-hidden').addClass('dashicons-visibility');
+	}
 });
