@@ -67,6 +67,10 @@ function solo_woocommerce_deactivate() {
 	// Delete exchange rate from database and remove scheduled job
 	solo_woocommerce_exchange(4);
 
+	// Delete temporary transients
+	delete_transient('solo_tag');
+	delete_transient('solo_url');
+
 	// Note: keep table with orders
 }
 
@@ -82,6 +86,10 @@ function solo_woocommerce_uninstall() {
 
 	// Delete plugin settings from database
 	delete_option('solo_woocommerce_postavke');
+
+	// Delete temporary transients
+	delete_transient('solo_tag');
+	delete_transient('solo_url');
 
 	// Note: keep table with orders
 }
@@ -650,7 +658,11 @@ class solo_woocommerce {
 				// Create POST request from order details
 				$i = 0;
 				$api_request = 'token=' . $token . PHP_EOL;
-				if (!isset($tip_usluge)) $tip_usluge = 1;
+				if (!isset($tip_usluge)) {
+					$tip_usluge = 1;
+				} else {
+					if (!is_numeric($tip_usluge)) $tip_usluge = 1;
+				}
 				$api_request .= '&tip_usluge=' . $tip_usluge . PHP_EOL;
 				if (!isset($prikazi_porez)) $prikazi_porez = 0;
 				$api_request .= '&prikazi_porez=' . $prikazi_porez . PHP_EOL;
