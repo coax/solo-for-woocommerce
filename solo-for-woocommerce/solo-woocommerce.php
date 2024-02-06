@@ -681,21 +681,27 @@ class solo_woocommerce {
 					$item_quantity = $item->get_quantity();
 
 					$taxes = WC_Tax::get_rates($item->get_tax_class());
-					$rates = isset($taxes) ? array($taxes) : [];
-					$rates = array_shift($rates);
-					$item_tax = round(array_shift($rates));
+					foreach ($taxes as $key => $value) {
+						$item_tax = $value['rate'];
+					}
+					if (!in_array($item_tax, array(5, 13, 25))) $item_tax = 0;
+					$item_tax = round($item_tax);
+
+					// Override tax if not in order
+					$tax_total = $item->get_subtotal_tax();
+					if ($tax_total==0) $item_tax = 0;
 
 					$item_ = $item['variation_id'] ? wc_get_product($item['variation_id']) : wc_get_product($item['product_id']);
-					$item_price = $item_->get_regular_price();
+					$item_price = wc_get_price_excluding_tax($item_, array('price' => $item_->get_regular_price()));
 					$item_discount = 0;
+					// On sale products
 					if ($item_->is_on_sale()) {
-						$item_sale_price = $item_->get_sale_price();
+						$item_price = wc_get_price_excluding_tax($item_, array('price' => $item_->get_sale_price()));
 						$item_discount = 100 - (($item_sale_price/$item_price) * 100);
 					}
-					$item_price = $item_price / (1 + ($item_tax/100));
 					$item_price = round($item_price, 2);
-
 					$item_price = number_format($item_price, 2, ',', '');
+
 					$item_quantity = str_replace('.', ',', $item_quantity);
 					$item_discount = str_replace('.', ',', $item_discount);
 
@@ -747,6 +753,7 @@ class solo_woocommerce {
 					$i++;
 
 					$shipping_tax = (($shipping_tax/$shipping_price) * 100);
+					if (!is_numeric($shipping_tax)) $shipping_tax = 0;
 					$shipping_tax = round($shipping_tax);
 					$shipping_price = round($shipping_price, 2);
 					$shipping_price = number_format($shipping_price, 2, ',', '');
