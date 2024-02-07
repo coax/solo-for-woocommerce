@@ -696,8 +696,10 @@ class solo_woocommerce {
 					$item_discount = 0;
 					// On sale products
 					if ($item_->is_on_sale()) {
-						$item_price = wc_get_price_excluding_tax($item_, array('price' => $item_->get_sale_price()));
+						$item_sale_price = wc_get_price_excluding_tax($item_, array('price' => $item_->get_sale_price()));
 						$item_discount = 100 - (($item_sale_price/$item_price) * 100);
+						// Max 18 chars
+						$item_discount = substr($item_discount, 0, 18);
 					}
 					$item_price = round($item_price, 2);
 					$item_price = number_format($item_price, 2, ',', '');
