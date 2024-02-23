@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.1
+ * Version: 1.2
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo

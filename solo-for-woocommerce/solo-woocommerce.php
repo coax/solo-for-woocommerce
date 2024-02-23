@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.1
+ * Version: 1.2
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -21,7 +21,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION'))
-	define('SOLO_VERSION', '1.1');
+	define('SOLO_VERSION', '1.2');
 
 //// Activate plugin
 register_activation_hook(
@@ -232,7 +232,7 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 	// Check for errors
 	if ($status==0 && isset($pdf)) {
 		// Download and send PDF
-		wp_schedule_single_event(time()+10, 'solo_woocommerce_api_get', array($pdf, $order_id));
+		wp_schedule_single_event(time()+10, 'solo_woocommerce_api_get', array($pdf, $order_id, $document_type));
 	} elseif ($status==100) {
 		// Retry after 10 seconds
 		wp_schedule_single_event(time()+10, 'solo_woocommerce_api_post', array($url, $api_request, $order_id, $document_type));
@@ -243,7 +243,7 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 };
 
 //// Download PDF and send e-mail to buyer
-function solo_woocommerce_api_get($pdf, $order_id) {
+function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 	// Init main class and get setting
 	$solo_woocommerce = new solo_woocommerce;
 	$send = $solo_woocommerce->setting('posalji');
@@ -256,31 +256,17 @@ function solo_woocommerce_api_get($pdf, $order_id) {
 		$order = wc_get_order($order_id);
 		$billing_email = $order->get_billing_email();
 
-		// Set local folder
+		// Set download folder
 		$folder = ABSPATH . 'wp-content/uploads/';
 
-		// Read remote file headers
-		$remote_file_headers = get_headers($pdf, 1);
-		$remote_file_headers = array_change_key_case($remote_file_headers, CASE_LOWER);
-
-		// Set filename
-		if ($remote_file_headers['content-disposition']) {
-			$temp_file = explode('=', $remote_file_headers['content-disposition']);
-			if ($temp_file[1]) $filename = trim($temp_file[1], '";\'');
-		} else {
-			$temp_file = preg_replace('/\\?.*/', '', $pdf);
-			$filename = basename($temp_file) . '.pdf';
-		}
-
-		// Save remote file
+		// Save PDF
 		$remote_file = file_get_contents($pdf);
-		$local_file = fopen($folder . $filename, "w");
-		fwrite($local_file, $remote_file);
-		fclose($local_file);
+		$local_file = $folder . $document_type . '.pdf';
+		file_put_contents($local_file, $remote_file);
 
-		// Send e-mail
+		// Send e-mail with PDF in attachment
 		$headers = 'Content-Type: text/mixed; charset=UTF-8';
-		$sent = wp_mail($billing_email, $title, $body, $headers, array($folder . $filename));
+		$sent = wp_mail($billing_email, $title, $body, $headers, array($local_file));
 
 		if ($sent) {
 			// Save sent date
@@ -297,8 +283,8 @@ function solo_woocommerce_api_get($pdf, $order_id) {
 			);
 		}
 
-		// Delete file
-		wp_delete_file($folder . $filename);
+		// Delete PDF
+		wp_delete_file($local_file);
 	}
 };
 
@@ -353,7 +339,7 @@ class solo_woocommerce {
 		add_action('solo_woocommerce_api_post', 'solo_woocommerce_api_post', 1, 4);
 
 		// Scheduled job for downloading PDF
-		add_action('solo_woocommerce_api_get', 'solo_woocommerce_api_get', 2, 2);
+		add_action('solo_woocommerce_api_get', 'solo_woocommerce_api_get', 2, 3);
 	}
 
 	//// Removes certain fields in checkout
@@ -699,7 +685,9 @@ class solo_woocommerce {
 						$item_sale_price = wc_get_price_excluding_tax($item_, array('price' => $item_->get_sale_price()));
 						$item_discount = 100 - (($item_sale_price/$item_price) * 100);
 						// Max 18 chars
-						$item_discount = substr($item_discount, 0, 18);
+						$item_discount = substr($item_discount, 0, 8);
+						// Max 4 decimals
+						$item_discount = number_format($item_discount, 4, ',', '');
 					}
 					$item_price = round($item_price, 2);
 					$item_price = number_format($item_price, 2, ',', '');
@@ -709,7 +697,7 @@ class solo_woocommerce {
 
 					$api_request .= '&usluga=' . $i . PHP_EOL;
 					$api_request .= '&opis_usluge_' . $i . '=' . urlencode($item_name) . PHP_EOL;
-					$api_request .= '&jed_mjera_' . $i . '=1' . PHP_EOL;
+					$api_request .= '&jed_mjera_' . $i . '=2' . PHP_EOL;
 					$api_request .= '&cijena_' . $i . '=' . $item_price . PHP_EOL;
 					$api_request .= '&kolicina_' . $i . '=' . $item_quantity . PHP_EOL;
 					$api_request .= '&popust_' . $i . '=' . $item_discount . PHP_EOL;
@@ -786,7 +774,7 @@ class solo_woocommerce {
 					}
 					$currency_exchange = str_replace('.', ',', $currency_exchange);
 
-					// Transform currency name to id that is accepted by Solo API
+					// Transform currency name to integer
 					$accepted_currencies = array(
 						'AUD' => '2',
 						'CAD' => '3',
