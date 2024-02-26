@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.2
+ * Version: 1.3
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -21,7 +21,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION'))
-	define('SOLO_VERSION', '1.2');
+	define('SOLO_VERSION', '1.3');
 
 //// Activate plugin
 register_activation_hook(
@@ -468,10 +468,7 @@ class solo_woocommerce {
 					$type = 'error';
 					$settings_data = '';
 				} else {
-					$settings_data[$key] = sanitize_text_field($value);
-
-					// Textarea exception to allow line breaks
-					if (isset($data['poruka'])) $settings_data['poruka'] = sanitize_textarea_field($value);
+					$settings_data[$key] = sanitize_textarea_field($value);
 
 					// Checkboxes
 					if (!isset($data['prikazi_porez'])) $settings_data['prikazi_porez'] = 0;
@@ -798,14 +795,20 @@ class solo_woocommerce {
 
 						$api_request .= '&valuta_' . $grammar . '=' . $currency_id . PHP_EOL;
 						$api_request .= '&tecaj=' . $currency_exchange . PHP_EOL;
-						$api_request .= '&napomene=' . urlencode(__('Preračunato po srednjem tečaju HNB-a', 'solo-for-woocommerce')) . ' (1 EUR = ' . $currency_exchange . ' ' . $currency . ')' . PHP_EOL;
+						$api_request .= '&napomene=' . urlencode(__('Preračunato po srednjem tečaju HNB-a', 'solo-for-woocommerce') . ' (1 EUR = ' . $currency_exchange . ' ' . $currency . ')') . PHP_EOL;
 					} else {
 						// Stop
 						return;
 					}
 				}
 
+				// Notes
+				if (isset(${'napomene_' . $document_type}) && !empty(${'napomene_' . $document_type})) $api_request .= '&napomene=' . urlencode(${'napomene_' . $document_type}) . PHP_EOL;
+
+				// Language
 				if (isset($jezik_) && !empty($jezik_)) $api_request .= '&jezik_' . $grammar . '=' . $jezik_ . PHP_EOL;
+
+				// Fiscalization
 				$api_request .= '&fiskalizacija=' . $fiskalizacija . PHP_EOL;
 
 				// Check for table in database

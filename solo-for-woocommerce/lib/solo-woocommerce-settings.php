@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.2
+ * Version: 1.3
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -55,7 +55,7 @@ $tab = isset($_GET['tab']) ? $_GET['tab'] : $default_tab;
 $solo_woocommerce = new solo_woocommerce;
 
 // Define default variables
-$token = $tip_usluge = $jezik_ = $prikazi_porez = $tip_racuna = $rok_placanja = $iban = $akcija = $posalji = $naslov = $poruka = '';
+$token = $tip_usluge = $jezik_ = $prikazi_porez = $tip_racuna = $rok_placanja = $napomene_racun = $napomene_ponuda = $iban = $akcija = $posalji = $naslov = $poruka = '';
 
 // Create variables from settings
 $settings = get_option('solo_woocommerce_postavke');
@@ -111,6 +111,7 @@ switch($tab):
 
 	case 'postavke':
 ?>
+      <input type="hidden" name="solo_woocommerce_postavke[posalji]" value="<?php echo $posalji ?>">
       <table class="form-table">
         <tbody>
           <tr>
@@ -170,6 +171,20 @@ switch($tab):
             </th>
             <td>
               <input type="text" name="solo_woocommerce_postavke[rok_placanja]" id="rok_placanja" value="<?php echo $rok_placanja; ?>" autocorrect="off" autocomplete="off" maxlength="2" placeholder="" class="small-text int">
+              <p class="description"><?php echo __('Nije obavezno upisati.', 'solo-for-woocommerce'); ?></p>
+            </td>
+          </tr>
+          <tr>
+            <th><label for="napomene_racun"><?php echo __('Napomene na računu', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši napomene koje će se pojaviti na svakom računu.<br>Solo prihvaća do najviše 1000 znakova.', 'solo-for-woocommerce'); ?>"></sup></label></th>
+            <td>
+              <textarea name="solo_woocommerce_postavke[napomene_racun]" id="napomene_racun" rows="2" maxlength="1000" class="large-text"><?php echo $napomene_racun; ?></textarea>
+              <p class="description"><?php echo __('Nije obavezno upisati.', 'solo-for-woocommerce'); ?></p>
+            </td>
+          </tr>
+          <tr>
+            <th><label for="napomene_ponuda"><?php echo __('Napomene na ponudi', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši napomene koje će se pojaviti na svakoj ponudi.<br>Solo prihvaća do najviše 1000 znakova.', 'solo-for-woocommerce'); ?>"></sup></label></th>
+            <td>
+              <textarea name="solo_woocommerce_postavke[napomene_ponuda]" id="napomene_ponuda" rows="2" maxlength="1000" class="large-text"><?php echo $napomene_ponuda; ?></textarea>
               <p class="description"><?php echo __('Nije obavezno upisati.', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
@@ -282,6 +297,8 @@ switch($tab):
 
 	case 'email':
 ?>
+      <input type="hidden" name="solo_woocommerce_postavke[prikazi_porez]" value="<?php echo $prikazi_porez ?>">
+      <input type="hidden" name="solo_woocommerce_postavke[tip_racuna]" value="<?php echo $tip_racuna ?>">
       <br><div class="notice notice-info inline"><p><?php echo __('Za automatsko slanje mailova trebaš imati namještene SMTP postavke, bilo ručno ili putem jednog od besplatnih WordPress dodataka za slanje (npr. <a href="https://wordpress.org/plugins/wp-mail-smtp/" target="_blank">WP Mail SMTP</a>).', 'solo-for-woocommerce'); ?></p></div>
       <table class="form-table">
         <tbody>
