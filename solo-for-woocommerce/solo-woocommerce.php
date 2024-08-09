@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.3
+ * Version: 1.4
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -21,7 +21,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION'))
-	define('SOLO_VERSION', '1.3');
+	define('SOLO_VERSION', '1.4');
 
 //// Activate plugin
 register_activation_hook(
@@ -125,7 +125,7 @@ function solo_woocommerce_exchange(int $action) {
 			} else {
 				$decoded_json = json_decode($exchange, true);
 				echo '<p>' . __('Tečajna lista je formatirana za Solo gdje se HNB-ov tečaj dijeli s 1 (npr. tečaj za račun ili ponudu u valuti USD treba biti 0,94 umjesto 7,064035).<br>Podaci se automatski ažuriraju svakih sat vremena (iduće ažuriranje u ' . get_date_from_gmt(date('H:i', wp_next_scheduled('solo_woocommerce_exchange_update', array(2))), 'H:i') . '). Izvor podataka: <a href="https://www.hnb.hr/statistika/statisticki-podaci/financijski-sektor/sredisnja-banka-hnb/devizni-tecajevi/referentni-tecajevi-esb-a" target="_blank">Hrvatska Narodna Banka</a>', 'solo-for-woocommerce') . '</p>';
-				echo '<table class="widefat striped" style="width:auto;"><tbody>';
+				echo '<table class="widefat striped" style="width:auto;"><colgroup><col style="width:50%;"><col style="width:50%;"></colgroup><thead><th>Valuta</th><th>Tečaj</th></thead><tbody>';
 				foreach($decoded_json as $key => $val) {
 					if ($key=='datum') continue; // Remove date from view
 					echo '<tr><td>1 ' . $key . '</td><td>' . str_replace('.', ',', $val) . ' EUR</td></tr>';
@@ -290,6 +290,9 @@ function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 
 //// Main class, holds properties and methods
 class solo_woocommerce {
+	// Declare params to avoid "PHP Deprecated: Creation of dynamic property" warnings
+	public $plugin_name = '';
+
 	// Magic function
 	public function __construct() {
 		if (is_admin()) {
