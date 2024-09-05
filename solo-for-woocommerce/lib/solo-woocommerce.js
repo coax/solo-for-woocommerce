@@ -64,6 +64,11 @@ jQuery(document).ready(function($) {
 		});
 	});
 
+	// Update button
+	$('div.notice a.button-small').on('click', function(e) {
+		$(this).after('<div class="spinner is-active"></div>').css({'vertical-align':'top'});
+	});
+
 	// Password
 	var password = $('[type=password]'), toggle = $('#toggle'), timeout = '';
 	toggle.on('click', function(e) {

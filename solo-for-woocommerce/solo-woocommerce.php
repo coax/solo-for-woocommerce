@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.4
+ * Version: 1.5
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -20,14 +20,12 @@ if (!defined('WPINC')) {
 }
 
 //// Plugin version
-if (!defined('SOLO_VERSION'))
-	define('SOLO_VERSION', '1.4');
+if (!defined('SOLO_VERSION')) {
+	define('SOLO_VERSION', '1.5');
+}
 
 //// Activate plugin
-register_activation_hook(
-	__FILE__,
-	'solo_woocommerce_activate'
-);
+register_activation_hook(__FILE__, 'solo_woocommerce_activate');
 
 function solo_woocommerce_activate() {
 	// Check PHP version
@@ -55,13 +53,13 @@ function solo_woocommerce_activate() {
 
 	// Create custom table in database
 	solo_woocommerce_create_table();
+
+	// Inform
+	solo_woocommerce_inform('activation');
 }
 
 //// Deactivate plugin
-register_deactivation_hook(
-	__FILE__,
-	'solo_woocommerce_deactivate'
-);
+register_deactivation_hook(__FILE__, 'solo_woocommerce_deactivate');
 
 function solo_woocommerce_deactivate() {
 	// Delete exchange rate from database and remove scheduled job
@@ -71,27 +69,52 @@ function solo_woocommerce_deactivate() {
 	delete_transient('solo_tag');
 	delete_transient('solo_url');
 
+	// Inform
+	solo_woocommerce_inform('deactivation');
+
 	// Note: keep table with orders
 }
 
 //// Uninstall plugin
-register_uninstall_hook(
-	__FILE__,
-	'solo_woocommerce_uninstall'
-);
+register_uninstall_hook(__FILE__, 'solo_woocommerce_uninstall');
 
 function solo_woocommerce_uninstall() {
 	// Delete exchange rate from database and remove scheduled job
 	solo_woocommerce_exchange(4);
 
-	// Delete plugin settings from database
-	delete_option('solo_woocommerce_postavke');
-
 	// Delete temporary transients
 	delete_transient('solo_tag');
 	delete_transient('solo_url');
 
+	// Delete plugin settings from database
+	delete_option('solo_woocommerce_postavke');
+
+	// Inform
+	solo_woocommerce_inform('uninstall');
+
 	// Note: keep table with orders
+}
+
+//// Inform on activation, deactivation, uninstall
+function solo_woocommerce_inform($event) {
+	global $wp_version;
+	$woo_version = WC()->version;
+
+	$plugin_data = array(
+		'event' => $event,
+		'site_url' => get_site_url(),
+		'plugin_version' => SOLO_VERSION,
+		'wordpress' => $wp_version,
+		'woocommerce' => $woo_version
+	);
+
+	wp_remote_post('https://api.solo.com.hr/solo-for-woocommerce', array(
+		'method' => 'POST',
+		'body' => json_encode($plugin_data),
+		'headers' => array(
+			'Content-Type' => 'application/json'
+		)
+	));
 }
 
 //// Create, update, view, delete exchange rate
@@ -308,8 +331,8 @@ class solo_woocommerce {
 			// Load custom CSS and JS
 			add_action('admin_enqueue_scripts', array($this, 'solo_woocommerce_css_js'));
 
-			// Save settings to wp_options table
-			add_action('admin_init', array($this, 'solo_woocommerce_save_settings'));
+			// Plugin settings (or update plugin)
+			add_action('admin_init', array($this, 'solo_woocommerce_settings'));
 
 			// Always show messages
 			add_action('admin_notices', array($this, 'solo_woocommerce_show_messages'));
@@ -343,6 +366,11 @@ class solo_woocommerce {
 
 		// Scheduled job for downloading PDF
 		add_action('solo_woocommerce_api_get', 'solo_woocommerce_api_get', 2, 3);
+	}
+
+	//// Show notices
+	function solo_woocommerce_show_messages() {
+		settings_errors();
 	}
 
 	//// Removes certain fields in checkout
@@ -450,8 +478,41 @@ class solo_woocommerce {
 		if (isset($data[$id])) return $data[$id];
 	}
 
-	//// WordPress Settings API
-	function solo_woocommerce_save_settings() {
+	//// Plugin settings (or update plugin)
+	function solo_woocommerce_settings() {
+		// Update plugin
+		if (isset($_GET['update']) && current_user_can('update_plugins')) {
+			// Nonce check
+			if (check_admin_referer('solo_woocommerce_update_nonce')) {
+				// Prepare update file to download
+				$url = get_transient('solo_url');
+				$temp_file = download_url($url);
+				if (is_wp_error($temp_file)) {
+					wp_die($result->get_error_message());
+				}
+
+				// Deactivate plugin
+				deactivate_plugins(__FILE__);
+
+				// Set download folder
+				$folder = WP_PLUGIN_DIR;
+				WP_Filesystem();
+				$result = unzip_file($temp_file, $folder);
+				if (is_wp_error($result)) {
+					wp_die($result->get_error_message());
+				}
+
+				// Delete temporary file
+				unlink($temp_file);
+
+				// Activate plugin
+				activate_plugins(__FILE__);
+
+				// Show custom notice
+				add_settings_error('solo_woocommerce_postavke', 'solo_woocommerce_postavke', __('Dodatak uspješno ažuriran.', 'solo-for-woocommerce'), 'updated');
+			}
+		}
+
 		register_setting('solo_woocommerce_postavke', 'solo_woocommerce_postavke', array($this, 'solo_woocommerce_form_validation'));
 	}
 
@@ -464,12 +525,17 @@ class solo_woocommerce {
 
 		// Validate fields
 		if ($data) {
+			$message = __('Postavke uspješno spremljene.', 'solo-for-woocommerce');
+			$type = 'updated';
+
 			foreach($data as $key => $value) {
 				// API token validation
 				if ($key=='token' && !preg_match('/^[a-zA-Z0-9]{33}$/', $data[$key])) {
 					$message = __('API token nije ispravan.', 'solo-for-woocommerce');
 					$type = 'error';
 					$settings_data = '';
+
+					break;
 				} else {
 					$settings_data[$key] = sanitize_textarea_field($value);
 
@@ -479,9 +545,6 @@ class solo_woocommerce {
 
 					// Required param for API
 					if (empty($data['tip_racuna']) || $data['tip_racuna']<=0) $settings_data['tip_racuna'] = 1;
-
-					$message = __('Postavke uspješno spremljene.', 'solo-for-woocommerce');
-					$type = 'updated';
 				}
 			}
 
@@ -490,11 +553,6 @@ class solo_woocommerce {
 
 			return $settings_data;
 		}
-	}
-
-	//// Show notices
-	function solo_woocommerce_show_messages() {
-		settings_errors();
 	}
 
 	//// Ajax token check
@@ -628,6 +686,16 @@ class solo_woocommerce {
 					case 'wooplatnica-croatia':
 						$nacin_placanja = 1;
 						$fiskalizacija = 0;
+						break;
+					// KEKS Pay
+					case 'erste-kekspay-woocommerce':
+						$nacin_placanja = 1;
+						$fiskalizacija = 0;
+						break;
+					// PayPal Express
+					case 'eh_paypal_express':
+						$nacin_placanja = 3;
+						$fiskalizacija = 1;
 						break;
 					// Stop
 					default:

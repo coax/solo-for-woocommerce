@@ -43,6 +43,8 @@ Dodatak automatski prepoznaje načine plaćanja u WooCommerce (ako su dostupni/o
 - [PikPay (Monri)](https://github.com/MonriPayments/woocommerce-monri)
 - [myPOS Checkout](https://wordpress.org/plugins/mypos-virtual-for-woocommerce/)
 - [Payment slip or mobile banking (Uplatnica)](https://wordpress.org/plugins/croatian-payment-slip-generator-for-woocommerce/)
+- [KEKS Pay](https://wordpress.org/plugins/keks-pay-for-woocommerce/)
+- [Payment Gateway Plugin for PayPal WooCommerce](https://wordpress.org/plugins/express-checkout-paypal-payment-gateway-for-woocommerce/)
 
 Pri kreiranju dokumenta u Solo, dodatak će automatski poslati informacije o načinu plaćanja i fiskalizaciji (npr. Direct bank transfer = Transakcijski račun koji se ne fiskalizira, Stripe Credit Card = Kartice i fiskalizira se).
 
@@ -52,7 +54,7 @@ _Bitno: ako tvoja trgovina ne koristi jednu od [podržanih valuta](https://solo.
 Preuzmi zadnju verziju dodatka i prebaci je u svoj WordPress (u mapu /wp-content/plugins) te aktiviraj iz administracije.\
 Nakon aktiviranja dodatka, sve upute će ti biti prikazane na ekranu.
 
-https://github.com/coax/solo-for-woocommerce/assets/189817/c7faf437-517c-4804-b7d9-f4c2bfd5a1a7
+https://github.com/user-attachments/assets/f8a9b340-718c-4559-b970-83fe213d4310
 
 ### Podrška:
 Ovaj dodatak je u razvojnoj fazi i moguće su greške pri korištenju. To je normalno za očekivati jer ne postoji idealan scenarij u moru WordPress instalacija i dodataka (pluginova). Na besprijekoran rad ovog dodatka mogu utjecati drugi dodaci koje imaš instalirane.

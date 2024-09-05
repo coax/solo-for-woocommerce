@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.4
+ * Version: 1.5
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -21,31 +21,38 @@ if (!defined('WPINC')) {
 
 // Version check
 $version_check = get_transient('solo_tag');
-$tag = $installed = 'v' . SOLO_VERSION;
-if ($version_check<>$installed) {
-	$tag = get_transient('solo_tag');
-	$url = get_transient('solo_url');
+$tag = $installed = SOLO_VERSION;
 
+if ($installed!=$version_check) {
+	// Read transient if exists
+	$tag = ltrim(get_transient('solo_tag'), 'v');
+	//$url = get_transient('solo_url');
+
+	// Transient not found, fetch latest version from GitHub
 	if (!$version_check) {
-		$opts = ['http' => ['method' => 'GET', 'header' => ['User-Agent: PHP']]];
-		$context = stream_context_create($opts);
-		$json = file_get_contents('https://api.github.com/repos/coax/solo-for-woocommerce/releases', false, $context);
-		$decoded_json = json_decode($json, true);
+		$json = wp_remote_get('https://api.github.com/repos/coax/solo-for-woocommerce/releases',
+			array(
+				'timeout' => 10,
+				'headers' => array(
+					'Accept' => 'application/json'
+				)
+			)
+		);
+		$decoded_json = json_decode($json['body'], true);
 		if (isset($decoded_json[0]['name'])) {
-			$tag = $decoded_json[0]['name'];
+			$tag = ltrim($decoded_json[0]['name'], 'v');
 			$url = $decoded_json[0]['assets'][0]['browser_download_url'];
+
+			// Create temporary transients (instead session)
+			set_transient('solo_tag', $tag, 60*60*24);
+			set_transient('solo_url', $url, 60*60*24);
 		}
-		// Create temporary transients (instead session)
-		set_transient('solo_tag', $tag, 60*60*24);
-		set_transient('solo_url', $url, 60*60*24);
 	}
 
-	$version1 = ltrim($installed, 'v');
-	$version2 = ltrim($tag, 'v');
-
-	if (version_compare($version1, $version2, '<')) {
+	// Display notice
+	if (version_compare($installed, $tag, '<')) {
 ?>
-      <div class="notice notice-info notice-alt"><p><?php echo __('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo $tag; ?></a></p><p><a href="<?php echo $url; ?>" class="button button-small button-primary"><?php echo __('Preuzmi novu verziju', 'solo-for-woocommerce'); ?></a></p></div>
+      <div class="notice notice-info notice-alt"><p><?php echo __('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo $tag; ?></a></p><p><a href="<?php echo wp_nonce_url('?page=solo-woocommerce&update=true', 'solo_woocommerce_update_nonce'); ?>" class="button button-small button-primary"><?php echo __('Instaliraj novu verziju', 'solo-for-woocommerce'); ?></a></p></div>
 <?php
 	}
 }
@@ -70,7 +77,7 @@ if (!empty($settings)) {
 ?>
 <div class="wrap">
   <form action="options.php" method="post">
-<?php settings_fields('solo_woocommerce_postavke'); ?>
+    <?php settings_fields('solo_woocommerce_postavke'); ?>
     <h1><div class="solo-logo"></div><?php echo esc_html(get_admin_page_title()); ?></h1>
     <p><?php echo __('Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.', 'solo-for-woocommerce'); ?></p>
     <nav class="nav-tab-wrapper">
@@ -244,6 +251,8 @@ switch($tab):
 					'pikpay' => __('Monri (kartice, fiskalizacija)', 'solo-for-woocommerce'),
 					'mypos_virtual' => __('myPOS (kartice, fiskalizacija)', 'solo-for-woocommerce'),
 					'wooplatnica-croatia' => __('Uplatnica', 'solo-for-woocommerce'),
+					'erste-kekspay-woocommerce' => __('KEKS Pay', 'solo-for-woocommerce'),
+					'eh_paypal_express' => __('PayPal Express (kartice, fiskalizacija)', 'solo-for-woocommerce')
 				);
 
 				// Show only available payments
