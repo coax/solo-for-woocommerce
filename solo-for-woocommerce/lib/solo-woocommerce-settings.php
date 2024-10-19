@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.5
+ * Version: 1.6
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -224,7 +224,8 @@ switch($tab):
 	case 'akcije':
 
 		// Show enabled WooCommerce gateways
-		$gateways = WC()->payment_gateways->get_available_payment_gateways();
+		$gateways = WC()->payment_gateways->payment_gateways();
+		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
 
 		if ($gateways) {
 ?>
@@ -234,6 +235,17 @@ switch($tab):
 				$gateway_id = $gateway->id;
 				$gateway_title = $gateway->title;
 				$gateway_description = $gateway->method_description;
+
+				// Mark active payment methods
+				$color = '';
+				if (is_array($available_gateways)) {
+					foreach ($available_gateways as $available_gateway) {
+						if ($gateway_id === $available_gateway->id) {
+							$color = ' notice-alt notice-success';
+							break;
+						}
+					}
+				}
 
 				// Beautify gateway names
 				$translations = array(
@@ -252,7 +264,8 @@ switch($tab):
 					'mypos_virtual' => __('myPOS (kartice, fiskalizacija)', 'solo-for-woocommerce'),
 					'wooplatnica-croatia' => __('Uplatnica', 'solo-for-woocommerce'),
 					'erste-kekspay-woocommerce' => __('KEKS Pay', 'solo-for-woocommerce'),
-					'eh_paypal_express' => __('PayPal Express (kartice, fiskalizacija)', 'solo-for-woocommerce')
+					'eh_paypal_express' => __('PayPal Express (kartice, fiskalizacija)', 'solo-for-woocommerce'),
+					'revolut_cc' => __('Revolut (kartice, fiskalizacija)', 'solo-for-woocommerce')
 				);
 
 				// Show only available payments
@@ -267,7 +280,7 @@ switch($tab):
 						$dynamic_var1 = $dynamic_var2 = '';
 					}
 ?>
-      <div class="card">
+      <div class="card<?php echo $color; ?>">
         <h3><a href="admin.php?page=wc-settings&tab=checkout&section=<?php echo esc_attr($gateway_id); ?>" target="_blank"><?php echo $gateway_title; ?></a></h3>
         <p><?php echo $gateway_description; ?></p>
         <hr>

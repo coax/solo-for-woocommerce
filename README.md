@@ -45,6 +45,7 @@ Dodatak automatski prepoznaje načine plaćanja u WooCommerce (ako su dostupni/o
 - [Payment slip or mobile banking (Uplatnica)](https://wordpress.org/plugins/croatian-payment-slip-generator-for-woocommerce/)
 - [KEKS Pay](https://wordpress.org/plugins/keks-pay-for-woocommerce/)
 - [Payment Gateway Plugin for PayPal WooCommerce](https://wordpress.org/plugins/express-checkout-paypal-payment-gateway-for-woocommerce/)
+- [Revolut](https://wordpress.org/plugins/revolut-gateway-for-woocommerce/)
 
 Pri kreiranju dokumenta u Solo, dodatak će automatski poslati informacije o načinu plaćanja i fiskalizaciji (npr. Direct bank transfer = Transakcijski račun koji se ne fiskalizira, Stripe Credit Card = Kartice i fiskalizira se).
 

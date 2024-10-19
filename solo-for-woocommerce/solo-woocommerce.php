@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.5
+ * Version: 1.6
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -21,7 +21,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '1.5');
+	define('SOLO_VERSION', '1.6');
 }
 
 //// Activate plugin
@@ -694,6 +694,11 @@ class solo_woocommerce {
 						break;
 					// PayPal Express
 					case 'eh_paypal_express':
+						$nacin_placanja = 3;
+						$fiskalizacija = 1;
+						break;
+					// Revolut
+					case 'revolut_cc':
 						$nacin_placanja = 3;
 						$fiskalizacija = 1;
 						break;
