@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.6
+ * Version: 1.7
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -265,7 +265,8 @@ switch($tab):
 					'wooplatnica-croatia' => __('Uplatnica', 'solo-for-woocommerce'),
 					'erste-kekspay-woocommerce' => __('KEKS Pay', 'solo-for-woocommerce'),
 					'eh_paypal_express' => __('PayPal Express (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'revolut_cc' => __('Revolut (kartice, fiskalizacija)', 'solo-for-woocommerce')
+					'revolut_cc' => __('Revolut (kartice, fiskalizacija)', 'solo-for-woocommerce'),
+					'aircash-woocommerce' => __('Aircash (kartice, fiskalizacija)', 'solo-for-woocommerce')
 				);
 
 				// Show only available payments
@@ -327,7 +328,7 @@ switch($tab):
 	case 'email':
 
 	// Cron check
-	if ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ) {
+	if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
 ?>
       <br>
       <div class="notice notice-error inline"><p><?php echo __('Za automatsko slanje računa ili ponude na e-mail, potrebno je izbrisati <code>define(\'DISABLE_WP_CRON\', true);</code> iz <i>wp-config.php</i> datoteke.', 'solo-for-woocommerce'); ?></p></div>
@@ -404,12 +405,12 @@ switch($tab):
         </colgroup>
         <thead>
           <tr>
-            <th data-sort="int"><?php echo __('Narudžba', 'solo-for-woocommerce'); ?></th>
-            <th data-sort="string"><?php echo __('API zahtjev', 'solo-for-woocommerce'); ?></th>
-            <th data-sort="string"><?php echo __('API odgovor', 'solo-for-woocommerce'); ?></th>
-            <th data-sort="string"><?php echo __('Datum zahtjeva', 'solo-for-woocommerce'); ?></th>
-            <th data-sort="string"><?php echo __('Datum odgovora', 'solo-for-woocommerce'); ?></th>
-            <th data-sort="string"><?php echo __('Datum slanja', 'solo-for-woocommerce'); ?></th>
+            <th data-sortas="numeric"><?php echo __('Narudžba', 'solo-for-woocommerce'); ?></th>
+            <th data-sortas="case-insensitive"><?php echo __('API zahtjev', 'solo-for-woocommerce'); ?></th>
+            <th data-sortas="case-insensitive"><?php echo __('API odgovor', 'solo-for-woocommerce'); ?></th>
+            <th data-sortas="datetime"><?php echo __('Datum zahtjeva', 'solo-for-woocommerce'); ?></th>
+            <th data-sortas="datetime"><?php echo __('Datum odgovora', 'solo-for-woocommerce'); ?></th>
+            <th data-sortas="datetime"><?php echo __('Datum slanja', 'solo-for-woocommerce'); ?></th>
           </tr>
         </thead>
         <tbody>
@@ -465,12 +466,12 @@ switch($tab):
 				if (!$sent || $sent=='0000-00-00 00:00:00') $sent = '&ndash;';
 ?>
           <tr class="shrink">
-            <td><p><a href="post.php?post=<?php echo $row->order_id; ?>&action=edit"><?php echo $row->order_id; ?></a></p></td>
+            <td data-sortvalue="<?php echo $row->order_id; ?>"><p><a href="post.php?post=<?php echo $row->order_id; ?>&action=edit"><?php echo $row->order_id; ?></a></p></td>
             <td><p><?php echo $api_request; ?></p></td>
             <td><p><?php echo $api_response; ?></p></td>
-            <td><p><?php echo $created . '<br>' . timeago($created); ?></p></td>
-            <td><p><?php echo $updated . '<br>' . timeago($updated); ?></p></td>
-            <td><p><?php echo $sent . '<br>' . timeago($sent); ?></p></td>
+            <td data-sortvalue="<?php echo $created; ?>"><p><?php echo $created . '<br>' . timeago($created); ?></p></td>
+            <td data-sortvalue="<?php echo $updated; ?>"><p><?php echo $updated . '<br>' . timeago($updated); ?></p></td>
+            <td data-sortvalue="<?php echo $sent; ?>"><p><?php echo $sent . '<br>' . timeago($sent); ?></p></td>
           </tr>
 <?php
 				}

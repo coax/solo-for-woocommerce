@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.6
+ * Version: 1.7
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Author: Solo
@@ -21,7 +21,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '1.6');
+	define('SOLO_VERSION', '1.7');
 }
 
 //// Activate plugin
@@ -228,6 +228,9 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 			'body' => $api_request,
 			'sslverify' => false,
 			'timeout' => 10,
+			'headers' => [
+				'Content-Type' => 'application/x-www-form-urlencoded'
+			]
 		)
 	);
 	$api_response = wp_remote_retrieve_body($api_response);
@@ -480,6 +483,13 @@ class solo_woocommerce {
 
 	//// Plugin settings (or update plugin)
 	function solo_woocommerce_settings() {
+		// Deactivate if another plugin is active
+		if (is_plugin_active('woo-solo-api/woo-solo-api.php')) {
+			deactivate_plugins(__FILE__);
+			// Show custom notice
+			add_settings_error('solo_woocommerce_postavke', 'plugin_conflict', __('Solo for WooCommerce je automatski deaktiviran zbog Woo Solo Api dodatka.', 'solo-for-woocommerce'), 'error');
+		}
+
 		// Update plugin
 		if (isset($_GET['update']) && current_user_can('update_plugins')) {
 			// Nonce check
@@ -488,15 +498,20 @@ class solo_woocommerce {
 				$url = get_transient('solo_url');
 				$temp_file = download_url($url);
 				if (is_wp_error($temp_file)) {
-					wp_die($result->get_error_message());
+					wp_die($temp_file->get_error_message());
 				}
 
 				// Deactivate plugin
 				deactivate_plugins(__FILE__);
 
-				// Set download folder
-				$folder = WP_PLUGIN_DIR;
+				// WordPress Filesystem API
+				if (!function_exists('WP_Filesystem')) {
+					require_once(ABSPATH . 'wp-admin/includes/file.php');
+				}
 				WP_Filesystem();
+
+				// Unzip the file
+				$folder = WP_PLUGIN_DIR;
 				$result = unzip_file($temp_file, $folder);
 				if (is_wp_error($result)) {
 					wp_die($result->get_error_message());
@@ -507,6 +522,9 @@ class solo_woocommerce {
 
 				// Activate plugin
 				activate_plugins(__FILE__);
+
+				// Inform
+				solo_woocommerce_inform('update');
 
 				// Show custom notice
 				add_settings_error('solo_woocommerce_postavke', 'solo_woocommerce_postavke', __('Dodatak uspješno ažuriran.', 'solo-for-woocommerce'), 'updated');
@@ -702,6 +720,11 @@ class solo_woocommerce {
 						$nacin_placanja = 3;
 						$fiskalizacija = 1;
 						break;
+					// Aircash
+					case 'aircash-woocommerce':
+						$nacin_placanja = 3;
+						$fiskalizacija = 1;
+						break;
 					// Stop
 					default:
 						return;
@@ -736,26 +759,44 @@ class solo_woocommerce {
 				foreach ($items as $item_key => $item) {
 					$i++;
 
+					// Get item details
 					$item_name = $item->get_name();
 					$item_quantity = $item->get_quantity();
-
-					$taxes = WC_Tax::get_rates($item->get_tax_class());
-					foreach ($taxes as $key => $value) {
-						$item_tax = $value['rate'];
-					}
-					if (!in_array($item_tax, array(5, 13, 25))) $item_tax = 0;
-					$item_tax = round($item_tax);
-
-					// Override tax if not in order
 					$tax_total = $item->get_subtotal_tax();
-					if ($tax_total==0) $item_tax = 0;
 
-					$item_ = $item['variation_id'] ? wc_get_product($item['variation_id']) : wc_get_product($item['product_id']);
-					$item_price = wc_get_price_excluding_tax($item_, array('price' => $item_->get_regular_price()));
+					// Fetch tax rate and round if necessary
+					$taxes = WC_Tax::get_rates($item->get_tax_class());
+					$item_tax = isset(current($taxes)['rate']) ? round(current($taxes)['rate']) : 0;
+
+					// Override tax if not a standard rate or if no tax was applied
+					if (!in_array($item_tax, [5, 13, 25]) || $tax_total == 0) {
+						$item_tax = 0;
+					}
+
+					// Autodetect variable item
+					$item_id = $item['variation_id'] ? $item['variation_id'] : $item['product_id'];
+
+					// Switch to product object (needed for prices and name)
+					$product = wc_get_product($item_id);
+
+					// Variable item
+					if ($item['variation_id']) {
+						// Replace order item name with product name
+						$item_name = $product->get_title();
+
+						// Append attributes and variations to product name
+						$item_meta_data = $item->get_meta_data();
+						foreach ($item_meta_data as $meta_data) {
+							$meta_data_as_array = $meta_data->get_data();
+							$item_name .= '\r\n' . esc_html(ucfirst($meta_data_as_array['key']) . ': ' . $meta_data_as_array['value']);
+						}
+					}
+
+					$item_price = wc_get_price_excluding_tax($product, array('price' => $product->get_regular_price()));
 					$item_discount = 0;
 					// On sale products
-					if ($item_->is_on_sale()) {
-						$item_sale_price = wc_get_price_excluding_tax($item_, array('price' => $item_->get_sale_price()));
+					if ($product->is_on_sale()) {
+						$item_sale_price = wc_get_price_excluding_tax($product, array('price' => $product->get_sale_price()));
 						$item_discount = 100 - (($item_sale_price/$item_price) * 100);
 						// Max 18 chars
 						$item_discount = substr($item_discount, 0, 8);
@@ -906,7 +947,7 @@ class solo_woocommerce {
 				);
 
 				// Send order to Solo API
-				solo_woocommerce_api_post($url, $api_request, $order_id, $document_type);
+				solo_woocommerce_api_post($url, str_replace(PHP_EOL, '', $api_request), $order_id, $document_type);
 			}
 		}
 	}
