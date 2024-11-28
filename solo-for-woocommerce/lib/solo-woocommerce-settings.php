@@ -3,9 +3,10 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.7
+ * Version: 1.8
  * Requires at least: 5.2
  * Requires PHP: 7.2
+ * Requires Plugins: woocommerce
  * Author: Solo
  * Author URI: https://solo.com.hr/
  * License: CC BY-NC-ND
@@ -23,10 +24,9 @@ if (!defined('WPINC')) {
 $version_check = get_transient('solo_tag');
 $tag = $installed = SOLO_VERSION;
 
-if ($installed!=$version_check) {
+if (($installed!=$version_check) && (!isset($_GET['update']))) {
 	// Read transient if exists
 	$tag = ltrim(get_transient('solo_tag'), 'v');
-	//$url = get_transient('solo_url');
 
 	// Transient not found, fetch latest version from GitHub
 	if (!$version_check) {
@@ -113,7 +113,7 @@ switch($tab):
                 <input type="password" name="solo_woocommerce_postavke[token]" id="token" value="<?php echo $token; ?>" autocorrect="off" autocomplete="off" maxlength="33" placeholder="" class="regular-text" class="mailserver-pass-wrap">
                 <button type="button" class="button wp-hide-pw hide-if-no-js" id="toggle"><span class="dashicons dashicons-visibility"></span></button>
               </span>
-              <p class="description"><?php if ($token==''): ?><?php echo __('Upiši i spremi promjene kako bi se otvorile ostale opcije.', 'solo-for-woocommerce'); ?><?php else: ?><a href="#" class="provjera"><?php echo __('Provjeri valjanost tokena', 'solo-for-woocommerce'); ?></a><?php endif; ?></p>
+              <p class="description"><?php if ($token==''): ?><?php echo __('Upiši i spremi promjene kako bi se prikazale ostale opcije.', 'solo-for-woocommerce'); ?><?php else: ?><a href="#" class="provjera"><?php echo __('Provjeri valjanost tokena', 'solo-for-woocommerce'); ?></a><?php endif; ?></p>
             </td>
           </tr>
         </tbody>
@@ -260,7 +260,7 @@ switch($tab):
 					'ppec_paypal' => __('PayPal', 'solo-for-woocommerce'),
 					'ppcp-gateway' => __('PayPal', 'solo-for-woocommerce'),
 					'corvuspay' => __('CorvusPay (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'pikpay' => __('Monri (kartice, fiskalizacija)', 'solo-for-woocommerce'),
+					'monri' => __('Monri (kartice, fiskalizacija)', 'solo-for-woocommerce'),
 					'mypos_virtual' => __('myPOS (kartice, fiskalizacija)', 'solo-for-woocommerce'),
 					'wooplatnica-croatia' => __('Uplatnica', 'solo-for-woocommerce'),
 					'erste-kekspay-woocommerce' => __('KEKS Pay', 'solo-for-woocommerce'),
@@ -532,7 +532,7 @@ switch($tab):
 				// Display filtered lines
 				if (!empty($filtered_lines)) {
 ?>
-      <p><?php echo __('Greške iz <a href="' . esc_url(content_url('debug.log')) . '" target="_blank">debug.log</a> datoteke:', 'solo-for-woocommerce'); ?></p>
+      <p><?php echo sprintf(__('Greške iz <a href="%s" target="_blank">debug.log</a> datoteke:', 'solo-for-woocommerce'), esc_url(content_url('debug.log'))); ?></p>
 <?php
 					// Sort descending
 					rsort($filtered_lines);

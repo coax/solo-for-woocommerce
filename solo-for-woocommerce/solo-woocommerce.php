@@ -3,9 +3,10 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.7
+ * Version: 1.8
  * Requires at least: 5.2
  * Requires PHP: 7.2
+ * Requires Plugins: woocommerce
  * Author: Solo
  * Author URI: https://solo.com.hr/
  * License: CC BY-NC-ND
@@ -21,7 +22,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '1.7');
+	define('SOLO_VERSION', '1.8');
 }
 
 //// Activate plugin
@@ -30,13 +31,16 @@ register_activation_hook(__FILE__, 'solo_woocommerce_activate');
 function solo_woocommerce_activate() {
 	// Check PHP version
 	if (version_compare(PHP_VERSION, '7.2', '<')) {
-		wp_die(__('Solo for WooCommerce dodatak ne podržava PHP ' . PHP_VERSION . '. Ažuriraj PHP na verziju 7.2 ili noviju.', 'solo-for-woocommerce'), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
+		wp_die(sprintf(__('Solo for WooCommerce dodatak ne podržava PHP %s. Ažuriraj PHP na verziju 7.2 ili noviju.', 'solo-for-woocommerce'), PHP_VERSION), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
 	}
 
 	// Check if WooCommerce plugin installed
 	if (!class_exists('WooCommerce')) {
 		wp_die(__('Solo for WooCommerce ne radi bez WooCommerce dodatka.<br>Prvo instaliraj WooCommerce i zatim aktiviraj ovaj dodatak.', 'solo-for-woocommerce'), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
 	}
+    if (version_compare(get_option('woocommerce_version'), 5, '<')) {
+        wp_die(__('Solo for WooCommerce radi samo s WooCommerce verzijom 5 ili novijom.', 'solo-for-woocommerce'), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
+    }
 
 	// Check if Woo Solo Api plugin installed
 	if (is_plugin_active('woo-solo-api/woo-solo-api.php')) {
@@ -98,7 +102,7 @@ function solo_woocommerce_uninstall() {
 //// Inform on activation, deactivation, uninstall
 function solo_woocommerce_inform($event) {
 	global $wp_version;
-	$woo_version = WC()->version;
+	$woo_version = class_exists('WooCommerce') ? WC()->version : '';
 
 	$plugin_data = array(
 		'event' => $event,
@@ -144,10 +148,10 @@ function solo_woocommerce_exchange(int $action) {
 			// Read exchange rate from wp_options table
 			$exchange = get_option('solo_woocommerce_tecaj');
 			if (!$exchange) {
-				echo '<br><div class="notice notice-error inline"><p>' . __('Tečajna lista nije dostupna. Pokušaj <a href="' . admin_url('plugins.php') . '#deactivate-solo-for-woocommerce">deaktivirati</a> i ponovno aktivirati dodatak.', 'solo-for-woocommerce') . '</p></div>';
+				echo '<br><div class="notice notice-error inline"><p>' . sprintf(__('Tečajna lista nije dostupna. Pokušaj <a href="%s#deactivate-solo-for-woocommerce">deaktivirati</a> i ponovno aktivirati dodatak.', 'solo-for-woocommerce'), admin_url('plugins.php')) . '</p></div>';
 			} else {
 				$decoded_json = json_decode($exchange, true);
-				echo '<p>' . __('Tečajna lista je formatirana za Solo gdje se HNB-ov tečaj dijeli s 1 (npr. tečaj za račun ili ponudu u valuti USD treba biti 0,94 umjesto 7,064035).<br>Podaci se automatski ažuriraju svakih sat vremena (iduće ažuriranje u ' . get_date_from_gmt(date('H:i', wp_next_scheduled('solo_woocommerce_exchange_update', array(2))), 'H:i') . '). Izvor podataka: <a href="https://www.hnb.hr/statistika/statisticki-podaci/financijski-sektor/sredisnja-banka-hnb/devizni-tecajevi/referentni-tecajevi-esb-a" target="_blank">Hrvatska Narodna Banka</a>', 'solo-for-woocommerce') . '</p>';
+				echo '<p>' . sprintf(__('Tečajna lista je formatirana za Solo gdje se HNB-ov tečaj dijeli s 1 (npr. tečaj za račun ili ponudu u valuti USD treba biti 0,94 umjesto 7,064035).<br>Podaci se automatski ažuriraju svakih sat vremena (iduće ažuriranje u %s). Izvor podataka: <a href="https://www.hnb.hr/statistika/statisticki-podaci/financijski-sektor/sredisnja-banka-hnb/devizni-tecajevi/referentni-tecajevi-esb-a" target="_blank">Hrvatska Narodna Banka</a>', 'solo-for-woocommerce'), get_date_from_gmt(date('H:i', wp_next_scheduled('solo_woocommerce_exchange_update', array(2))), 'H:i')) . '</p>';
 				echo '<table class="widefat striped" style="width:auto;"><colgroup><col style="width:50%;"><col style="width:50%;"></colgroup><thead><th>Valuta</th><th>Tečaj</th></thead><tbody>';
 				foreach($decoded_json as $key => $val) {
 					if ($key=='datum') continue; // Remove date from view
@@ -691,7 +695,7 @@ class solo_woocommerce {
 						$fiskalizacija = 1;
 						break;
 					// Monri (Credit Card)
-					case 'pikpay':
+					case 'monri':
 						$nacin_placanja = 3;
 						$fiskalizacija = 1;
 						break;
@@ -715,7 +719,7 @@ class solo_woocommerce {
 						$nacin_placanja = 3;
 						$fiskalizacija = 1;
 						break;
-					// Revolut
+					// Revolut (Credit/Debit Cards)
 					case 'revolut_cc':
 						$nacin_placanja = 3;
 						$fiskalizacija = 1;
@@ -785,10 +789,24 @@ class solo_woocommerce {
 						$item_name = $product->get_title();
 
 						// Append attributes and variations to product name
-						$item_meta_data = $item->get_meta_data();
-						foreach ($item_meta_data as $meta_data) {
-							$meta_data_as_array = $meta_data->get_data();
-							$item_name .= '\r\n' . esc_html(ucfirst($meta_data_as_array['key']) . ': ' . $meta_data_as_array['value']);
+						foreach ($item->get_meta_data() as $meta) {
+							if (empty($meta->id) || '' === $meta->value || !is_scalar($meta->value)) {
+								continue;
+							}
+
+							$meta->key = rawurldecode((string) $meta->key);
+							$meta->value = rawurldecode((string) $meta->value);
+							$attribute_key = str_replace('attribute_', '', $meta->key);
+							$display_key = wc_attribute_label($attribute_key, $product);
+							$display_value = wp_kses_post($meta->value);
+
+							if (taxonomy_exists($attribute_key)) {
+								$term = get_term_by('slug', $meta->value, $attribute_key);
+								if (!is_wp_error($term) && is_object($term) && $term->name) {
+									$display_value = $term->name;
+								}
+							}
+							$item_name .= '\r\n' . $display_key . ': ' . $display_value;
 						}
 					}
 

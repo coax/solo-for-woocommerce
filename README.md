@@ -34,18 +34,19 @@ Dodatak automatski prepoznaje načine plaćanja u WooCommerce (ako su dostupni/o
 - Direct bank transfer (Uplata na žiro račun)
 - Check payments (Plaćanje čekovima)
 - Cash on delivery (Plaćanje pouzećem)
-- Stripe (Credit Card)
-- Stripe (SEPA Direct Debit)
+- [Stripe (Credit Card)](https://wordpress.org/plugins/woocommerce-gateway-stripe/)
+- [Stripe (SEPA Direct Debit)](https://wordpress.org/plugins/woocommerce-gateway-stripe/)
 - [PayPal](https://wordpress.org/plugins/woocommerce-paypal-payments/)
 - [Braintree (Credit Card)](https://wordpress.org/plugins/woocommerce-gateway-paypal-powered-by-braintree/)
 - [Braintree (PayPal)](https://wordpress.org/plugins/woocommerce-gateway-paypal-powered-by-braintree/)
 - [CorvusPay](https://wordpress.org/plugins/corvuspay-woocommerce-integration/)
-- [PikPay (Monri)](https://github.com/MonriPayments/woocommerce-monri)
+- [Monri (WebPay, WSPay)](https://github.com/MonriPayments/woocommerce-monri)
 - [myPOS Checkout](https://wordpress.org/plugins/mypos-virtual-for-woocommerce/)
 - [Payment slip or mobile banking (Uplatnica)](https://wordpress.org/plugins/croatian-payment-slip-generator-for-woocommerce/)
 - [KEKS Pay](https://wordpress.org/plugins/keks-pay-for-woocommerce/)
 - [Payment Gateway Plugin for PayPal WooCommerce](https://wordpress.org/plugins/express-checkout-paypal-payment-gateway-for-woocommerce/)
 - [Revolut](https://wordpress.org/plugins/revolut-gateway-for-woocommerce/)
+- [Aircash](https://wordpress.org/plugins/aircash-for-woocommerce/)
 
 Pri kreiranju dokumenta u Solo, dodatak će automatski poslati informacije o načinu plaćanja i fiskalizaciji (npr. Direct bank transfer = Transakcijski račun koji se ne fiskalizira, Stripe Credit Card = Kartice i fiskalizira se).
 
