@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.8
+ * Version: 1.9
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Requires Plugins: woocommerce
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '1.8');
+	define('SOLO_VERSION', '1.9');
 }
 
 //// Activate plugin
@@ -262,10 +262,10 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 	// Check for errors
 	if ($status==0 && isset($pdf)) {
 		// Download and send PDF
-		wp_schedule_single_event(time()+10, 'solo_woocommerce_api_get', array($pdf, $order_id, $document_type));
+		wp_schedule_single_event(time()+5, 'solo_woocommerce_api_get', array($pdf, $order_id, $document_type));
 	} elseif ($status==100) {
-		// Retry after 10 seconds
-		wp_schedule_single_event(time()+10, 'solo_woocommerce_api_post', array($url, $api_request, $order_id, $document_type));
+		// Retry after 5 seconds
+		wp_schedule_single_event(time()+5, 'solo_woocommerce_api_post', array($url, $api_request, $order_id, $document_type));
 	} else {
 		// Stop on other errors
 		return;
@@ -406,6 +406,15 @@ class solo_woocommerce {
 			),
 			$fields->get_value('company_name')
 		);
+		woocommerce_form_field('company_address', array(
+				'type' => 'text',
+				'label' => __('Adresa', 'solo-for-woocommerce'),
+				'placeholder' => __('Adresa', 'solo-for-woocommerce'),
+				'required' => false,
+				'class' => array('form-row-wide hidden')
+			),
+			$fields->get_value('company_address')
+		);
 		woocommerce_form_field('vat_number', array(
 				'type' => 'text',
 				'label' => __('OIB', 'solo-for-woocommerce'),
@@ -417,13 +426,14 @@ class solo_woocommerce {
 		);
 		echo '</div>';
 		echo '<style>#vat_number .hidden{display:none;}</style>';
-		echo '<script>jQuery(function($){$("#vat_number [type=checkbox]").on("click",function(){if($(this).is(":checked")){$("#company_name_field,#vat_number_field").removeClass("hidden");$("#company_name").focus();}else{$("#company_name_field,#vat_number_field").addClass("hidden");}});});</script>';
+		echo '<script>jQuery(function($){$("#vat_number [type=checkbox]").on("click",function(){if($(this).is(":checked")){$("#company_name_field,#company_address_field,#vat_number_field").removeClass("hidden");$("#company_name").focus();}else{$("#company_name_field,#company_address_field,#vat_number_field").addClass("hidden");}});});</script>';
 	}
 
 	//// Save custom fields after checkout
 	public function solo_woocommerce_custom_meta($order_id) {
 		if (!empty($_POST['vat_number'])) {
 			update_post_meta($order_id, '_company_name', sanitize_text_field($_POST['company_name']));
+			update_post_meta($order_id, '_company_address', sanitize_text_field($_POST['company_address']));
 			update_post_meta($order_id, '_vat_number', sanitize_text_field($_POST['vat_number']));
 		}
 	}
@@ -431,8 +441,9 @@ class solo_woocommerce {
 	//// Show custom fields to admin
 	public function solo_woocommerce_admin_order_meta($order) {
 		$naziv_tvrtke = get_post_meta($order->get_id(), '_company_name', true);
+		$adresa_tvrtke = get_post_meta($order->get_id(), '_company_address', true);
 		$oib = get_post_meta($order->get_id(), '_vat_number', true);
-		if ($naziv_tvrtke) echo '<p><strong>' . __('Podaci za R1 račun', 'solo-for-woocommerce') . ':</strong><br>' . $naziv_tvrtke . '<br>' . $oib . '</p>';
+		if ($naziv_tvrtke) echo '<p><strong>' . __('Podaci za R1 račun', 'solo-for-woocommerce') . ':</strong><br>' . $naziv_tvrtke . '<br>' . $adresa_tvrtke . '<br>' . $oib . '</p>';
 	}
 
 	public function solo_woocommerce_admin_column_meta($column) {
@@ -447,10 +458,11 @@ class solo_woocommerce {
 	//// Show custom fields to customer
 	public function solo_woocommerce_customer_order_meta($order) {
 		$naziv_tvrtke = get_post_meta($order->get_id(), '_company_name', true);
+		$adresa_tvrtke = get_post_meta($order->get_id(), '_company_address', true);
 		$oib = get_post_meta($order->get_id(), '_vat_number', true);
 		if ($naziv_tvrtke) {
 			echo '<h2 class="woocommerce-column__title">' . __('Podaci za R1 račun', 'solo-for-woocommerce') . '</h2>';
-			echo '<p>' . $naziv_tvrtke . '<br>' . $oib . '</p>';
+			echo '<p>' . $naziv_tvrtke . '<br>' . $adresa_tvrtke . '<br>' . $oib . '</p>';
 		}
 	}
 
@@ -624,7 +636,7 @@ class solo_woocommerce {
 			$exists = $wpdb->get_var("SELECT order_id FROM $table_name WHERE order_id=$order_id");
 
 			// Proceed on "checkout" or "completed"
-			if (($old_status=='pending' && $new_status=='on-hold' && $trigger==1 && !$exists) || ($old_status=='pending' && $new_status=='processing' && $trigger==1 && !$exists) || ($new_status=='completed' && $old_status<>$new_status && $trigger==2 && !$exists)) {
+			if (($old_status=='pending' && $new_status=='on-hold' && $trigger==1 && !$exists) || ($old_status=='pending' && $new_status=='processing' && $trigger==1 && !$exists) || ($old_status<>$new_status && $new_status=='completed' && $trigger==2 && !$exists)) {
 				// Get order information
 				$date_created = $order->get_date_created();
 				$kupac_ime = $order->get_billing_first_name();
@@ -632,11 +644,13 @@ class solo_woocommerce {
 				$kupac_naziv = $kupac_ime . ' ' . $kupac_prezime;
 					// Custom fields added by plugin
 					$naziv_tvrtke = get_post_meta($order_id, '_company_name', true);
+					$adresa_tvrtke = get_post_meta($order_id, '_company_address', true);
 					$kupac_oib = get_post_meta($order_id, '_vat_number', true);
 					if ($naziv_tvrtke<>'') $kupac_naziv = $naziv_tvrtke;
 				$kupac_adresa = $order->get_billing_address_1();
 				if (!empty($order->get_billing_address_2())) $kupac_adresa .= ' ' . $order->get_billing_address_2();
 				$kupac_adresa = $kupac_adresa . ', ' . $order->get_billing_postcode() . ' ' . $order->get_billing_city() . ', ' . $order->get_billing_country();
+					if ($adresa_tvrtke<>'') $kupac_adresa = $adresa_tvrtke;
 
 				// Payment methods (needed for fiscalization)
 				$nacin_placanja = $fiskalizacija = '';

@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.8
+ * Version: 1.9
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Requires Plugins: woocommerce
@@ -222,7 +222,11 @@ switch($tab):
 		break;
 
 	case 'akcije':
-
+?>
+      <input type="hidden" name="solo_woocommerce_postavke[prikazi_porez]" value="<?php echo $prikazi_porez ?>">
+      <input type="hidden" name="solo_woocommerce_postavke[tip_racuna]" value="<?php echo $tip_racuna ?>">
+      <input type="hidden" name="solo_woocommerce_postavke[posalji]" value="<?php echo $posalji ?>">
+<?php
 		// Show enabled WooCommerce gateways
 		$gateways = WC()->payment_gateways->payment_gateways();
 		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
@@ -327,15 +331,66 @@ switch($tab):
 
 	case 'email':
 
-	// Cron check
-	if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
+		// Cron check
+		if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
 ?>
       <br>
       <div class="notice notice-error inline"><p><?php echo __('Za automatsko slanje računa ili ponude na e-mail, potrebno je izbrisati <code>define(\'DISABLE_WP_CRON\', true);</code> iz <i>wp-config.php</i> datoteke.', 'solo-for-woocommerce'); ?></p></div>
 <?php
-	} else {
+		} else {
+			$known_smtp_plugins = array(
+				// WP Mail SMTP
+				'wp-mail-smtp/wp_mail_smtp.php',
+				// Post SMTP
+				'post-smtp/postman-smtp.php',
+				// Easy WP SMTP
+				'easy-wp-smtp/easy-wp-smtp.php',
+				// FluentSMTP
+				'fluent-smtp/fluent-smtp.php',
+				// SureMail
+				'suremails/suremails.php',
+				// SMTP Mailer
+				'smtp-mailer/main.php',
+				// WP SMTP Mailer - SMTP7
+				'wp-mail-smtp-mailer/wp-mail-smtp-mailer.php',
+				// YaySMTP and Email Logs
+				'yaysmtp/yay-smtp.php',
+				// Site Mailer
+				'site-mailer/site-mailer.php',
+				// SMTP by BestWebSoft
+				'bws-smtp/bws-smtp.php',
+				// Swift SMTP (formerly Welcome Email Editor)
+				'welcome-email-editor/sb_welcome_email_editor.php',
+				// Configure SMTP
+				'configure-smtp/configure-smtp.php',
+				// Bit SMTP
+				'bit-smtp/bit_smtp.php',
+			);
+
+			// Retrieve the list of active plugins
+			$active_plugins = (array) get_option('active_plugins', array());
+
+			// Optionally include network activated plugins on multisite installs
+			if (is_multisite()) {
+				$active_plugins = array_merge($active_plugins, array_keys(get_site_option('active_sitewide_plugins', array())));
+			}
+
+			$smtp_plugin_active = false;
+
+			foreach ($known_smtp_plugins as $plugin_file) {
+				if (in_array($plugin_file, $active_plugins, true)) {
+					$smtp_plugin_active = true;
+					break;
+				}
+			}
+
+			if (!$smtp_plugin_active) {
 ?>
-      <p><?php echo __('Za automatsko slanje mailova trebaš imati namještene SMTP postavke, bilo ručno ili putem jednog od besplatnih WordPress dodataka za slanje (npr. <a href="https://wordpress.org/plugins/smtp-mailer/" target="_blank">SMTP Mailer</a>).', 'solo-for-woocommerce'); ?></p>
+      <br>
+      <div class="notice notice-error inline"><p><?php echo __('Potrebno je instalirati (i aktivirati) SMTP dodatak za WordPress (npr. <a href="https://wordpress.org/plugins/smtp-mailer/" target="_blank">SMTP Mailer</a>) kako bi se račun ili ponuda automatski poslali kupcu na e-mail.', 'solo-for-woocommerce'); ?></p></div>
+<?php
+			}
+?>
       <input type="hidden" name="solo_woocommerce_postavke[prikazi_porez]" value="<?php echo $prikazi_porez ?>">
       <input type="hidden" name="solo_woocommerce_postavke[tip_racuna]" value="<?php echo $tip_racuna ?>">
       <table class="form-table">
@@ -458,6 +513,7 @@ switch($tab):
 				$api_request = preg_replace('/token=[a-zA-Z0-9]{29}/', 'token=*****************************', $api_request);
 				$api_request = nl2br($api_request);
 				$api_response = $row->api_response;
+				//$api_response = str_replace(' ', '&nbsp;', $api_response);
 				$api_response = nl2br($api_response);
 				$created = $row->created;
 				$updated = $row->updated;
