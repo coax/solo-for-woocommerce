@@ -11,3 +11,7 @@ span.status {padding:3px 6px; border-radius:4px;}
 span.status.processing {background:#c6e1c6; color:#5b841b;}
 span.status.on-hold {background:#f8dda7; color:#94660c;}
 span.status.completed {background:#c8d7e1; color:#2e4453;}
+table#arhiva tr.fail td {background-color:#fdecea;}
+table#arhiva tr.success td {background-color:#edfaef;}
+.pricekaj:after {content:''; animation:dots 1.5s steps(3,end) infinite;}
+@keyframes dots {0%{content:''}33%{content:'.'}66%{content:'..'}100%{content:'...'}}

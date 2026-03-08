@@ -39,29 +39,120 @@ jQuery(document).ready(function($) {
 		$.ajax({
 			type: 'GET',
 			url: ajax_object.ajax_url,
-			data: {action: 'check_token', token: token},
-			dataType: 'json',
+			data: {action: 'check_token', token: token, nonce: ajax_object.nonce},
+			dataType: 'text',
 			beforeSend: function() {
 				b.hide().after('<div class="spinner is-active"></div>');
 			},
 			error: function(xhr) {
-				$('.spinner').remove().after(xhr.responseText);
-			},
-			success: function(response) {
 				$('.spinner').remove();
-				if (response.status==0) {
-					b.before('Ispravan API token za korisnika <b>' + response.licenca.korisnik + '</b>');
-					if (response.licenca.racuni>3) {
-						b.before('<br>Plaćena licenca traje do ' + response.licenca.datum_isteka);
+				b.show().before(xhr.responseText);
+			},
+			success: function(responseText) {
+				$('.spinner').remove();
+				try {
+					var response = JSON.parse(responseText);
+					if (response.status==0) {
+						b.before('Ispravan API token za korisnika <b>' + response.licenca.korisnik + '</b>');
+						if (response.licenca.racuni>3) {
+							b.before('<br>Plaćena licenca traje do ' + response.licenca.datum_isteka);
+						} else {
+							b.before('<br>Koristiš besplatni paket (ograničenje na 3 računa i ponude).');
+						}
 					} else {
-						b.before('<br>Koristiš besplatni paket (ograničenje na 3 računa i ponude).');
+						b.before(response.message);
 					}
-				} else {
-					b.before(response.message);
+				} catch(e) {
+					b.before(responseText);
 				}
 			}
 		});
 	});
+
+	// Single retry
+	$(document).on('click', '.ponovi', function(e) {
+		e.preventDefault();
+		var link = $(this), order_id = link.data('order-id');
+		retrySoloApi(order_id, link, function(success, message, $ref) {
+			if (success) {
+				var $td = $ref.closest('td');
+				$ref.closest('tr').removeClass('fail').addClass('success');
+				$td.empty().html(message);
+			}
+		});
+	});
+
+	// Retry all failed
+	$('#ponovi').on('click', function(e) {
+		e.preventDefault();
+		var failed = $('.ponovi').slice(0, 10), total = failed.length;
+		if (total === 0) return;
+		var done = 0;
+		$('#ponovi').hide().after('<div class="spinner is-active"></div>');
+		$('#ponovi').next('span').text('0 / ' + total);
+
+		var failedArray = failed.toArray();
+		var index = 0;
+
+		function retryNext() {
+			if (index >= failedArray.length) {
+				$('.spinner').remove();
+				$('#ponovi').show();
+				$('#ponovi').next('span').text('');
+				return;
+			}
+			var link = $(failedArray[index]);
+			var order_id = link.data('order-id');
+			index++;
+			retrySoloApi(order_id, link, function(success, message, $ref) {
+				done++;
+				$('#ponovi').next('span').text(done + ' / ' + total);
+				if (success) {
+					var $td = $ref.closest('td');
+					$ref.closest('tr').removeClass('fail').addClass('success');
+					$td.empty().html(message);
+				}
+				setTimeout(retryNext, 10000);
+			});
+		}
+
+		retryNext();
+	});
+
+	// Shared retry function
+	function retrySoloApi(order_id, link, callback) {
+		var $spinner = $('<a class="pricekaj" href="#">Pričekaj</a>');
+		link.replaceWith($spinner);
+		link[0].blur();
+		$.ajax({
+			type: 'POST',
+			url: ajax_object.ajax_url,
+			data: {
+				action: 'solo_retry_order',
+				order_id: order_id,
+				nonce: ajax_object.retry_nonce
+			},
+			dataType: 'json',
+			success: function(response) {
+				if (response.success) {
+					callback(true, response.data.replace(/\r\n/g, '<br>'), $spinner);
+				} else {
+					$spinner.replaceWith(link);
+					link.text('Pokušaj ponovo');
+					link.after('<p><b>' + response.data.replace(/\r\n/g, '<br>') + '</b></p>');
+					link.closest('td').find('p:last').remove();
+					callback(false);
+				}
+			},
+			error: function(xhr) {
+				$spinner.replaceWith(link);
+				link.text('Pokušaj ponovo');
+				link.after('<p><b>Greška: ' + xhr.responseText + '</b></p>');
+				link.closest('td').find('p:last').remove();
+				callback(false);
+			}
+		});
+	}
 
 	// Update button
 	$('div.notice a.button-small').on('click', function(e) {
@@ -84,5 +175,25 @@ jQuery(document).ready(function($) {
 	function togglePassword() {
 		password.prop('type', 'password');
 		$('span', toggle).removeClass('dashicons-hidden').addClass('dashicons-visibility');
+	}
+
+	// KPD autosuggest on product edit page
+	if ($('#kpd').length) {
+		var kpdUrl = (typeof kpd_url !== 'undefined') ? kpd_url : '';
+		if (!kpdUrl) return;
+		$.getJSON(kpdUrl, function(kpdData) {
+			$('#kpd').select2({
+				placeholder: 'npr. 47.71.00',
+				allowClear: true,
+				minimumInputLength: 2,
+				data: kpdData.map(function(i) { return { id: i.kpd, text: i.kpd + ' – ' + i.opis }; }),
+				matcher: function(params, data) {
+					if (!params.term) return data;
+					var q = params.term.toLowerCase();
+					if (data.id.startsWith(q) || data.text.toLowerCase().includes(q)) return data;
+					return null;
+				}
+			});
+		});
 	}
 });

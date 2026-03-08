@@ -1,26 +1,55 @@
 <?php
-/**
- * Plugin Name: Solo for WooCommerce
- * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
- * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 1.9
- * Requires at least: 5.2
- * Requires PHP: 7.2
- * Requires Plugins: woocommerce
- * Author: Solo
- * Author URI: https://solo.com.hr/
- * License: CC BY-NC-ND
- * License URI: https://creativecommons.org/licenses/by-nc-nd/4.0/
- * Text Domain: solo-for-woocommerce
- * Domain Path: /languages
- */
-
 // Disallow direct call to this file
 if (!defined('WPINC')) {
 	die;
 }
 
-// Version check
+// Timeago dates
+function timeago($datetime) {
+	if (empty($datetime) || $datetime === '0000-00-00 00:00:00') return '';
+
+	try {
+		$dt = new DateTime($datetime, new DateTimeZone('Europe/Zagreb'));
+	} catch (Exception $e) {
+		return '';
+	}
+
+	$seconds_ago = time() - $dt->getTimestamp();
+
+	// Future dates or invalid
+	if ($seconds_ago < 0) return '';
+
+	// Older than a day — don't show relative time
+	if ($seconds_ago >= 86400) return '';
+
+	if ($seconds_ago >= 3600) {
+		$when = intval($seconds_ago / 3600);
+		if ($when == 1) {
+			$suffix = ' sat';
+		} elseif ($when < 5) {
+			$suffix = ' sata';
+		} else {
+			$suffix = ' sati';
+		}
+		return 'Prije ' . $when . $suffix;
+	}
+
+	if ($seconds_ago >= 120) {
+		$when = intval($seconds_ago / 60);
+		if ($when < 5) {
+			$suffix = ' minute';
+		} else {
+			$suffix = ' minuta';
+		}
+		return 'Prije ' . $when . $suffix;
+	}
+
+	if ($seconds_ago >= 60) return 'Prije minutu';
+
+	return 'Upravo sada';
+}
+
+// Version check only for users who can update plugins
 $version_check = get_transient('solo_tag');
 $tag = $installed = SOLO_VERSION;
 
@@ -38,19 +67,21 @@ if (($installed!=$version_check) && (!isset($_GET['update']))) {
 				)
 			)
 		);
-		$decoded_json = json_decode($json['body'], true);
-		if (isset($decoded_json[0]['name'])) {
-			$tag = ltrim($decoded_json[0]['name'], 'v');
-			$url = $decoded_json[0]['assets'][0]['browser_download_url'];
+		if (!is_wp_error($json)) {
+			$decoded_json = json_decode(wp_remote_retrieve_body($json), true);
+			if (isset($decoded_json[0]['name'])) {
+				$tag = ltrim($decoded_json[0]['name'], 'v');
+				$url = $decoded_json[0]['assets'][0]['browser_download_url'];
 
-			// Create temporary transients (instead session)
-			set_transient('solo_tag', $tag, 60*60*24);
-			set_transient('solo_url', $url, 60*60*24);
+				// Create temporary transients (instead session)
+				set_transient('solo_tag', $tag, 60*60*24);
+				set_transient('solo_url', $url, 60*60*24);
+			}
 		}
 	}
 
 	// Display notice
-	if (version_compare($installed, $tag, '<')) {
+	if (version_compare($installed, $tag, '<') && current_user_can('update_plugins')) {
 ?>
       <div class="notice notice-info notice-alt"><p><?php echo __('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo $tag; ?></a></p><p><a href="<?php echo wp_nonce_url('?page=solo-woocommerce&update=true', 'solo_woocommerce_update_nonce'); ?>" class="button button-small button-primary"><?php echo __('Instaliraj novu verziju', 'solo-for-woocommerce'); ?></a></p></div>
 <?php
@@ -59,13 +90,13 @@ if (($installed!=$version_check) && (!isset($_GET['update']))) {
 
 // Tabs
 $default_tab = null;
-$tab = isset($_GET['tab']) ? $_GET['tab'] : $default_tab;
+$tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : $default_tab;
 
 // Init main class
 $solo_woocommerce = new solo_woocommerce;
 
 // Define default variables
-$token = $tip_usluge = $jezik_ = $prikazi_porez = $tip_racuna = $rok_placanja = $napomene_racun = $napomene_ponuda = $iban = $akcija = $posalji = $naslov = $poruka = '';
+$token = $tip_usluge = $jezik_ = $prikazi_porez = $tip_racuna = $rok_placanja = $napomene_racun = $napomene_ponuda = $iban = $akcija = $posalji = $naslov = $poruka = $kpd = '';
 
 // Create variables from settings
 $settings = get_option('solo_woocommerce_postavke');
@@ -110,7 +141,7 @@ switch($tab):
             </th>
             <td class="mailserver-pass-wrap">
               <span class="wp-pwd">
-                <input type="password" name="solo_woocommerce_postavke[token]" id="token" value="<?php echo $token; ?>" autocorrect="off" autocomplete="off" maxlength="33" placeholder="" class="regular-text" class="mailserver-pass-wrap">
+                <input type="password" name="solo_woocommerce_postavke[token]" id="token" value="<?php echo esc_attr($token); ?>" autocorrect="off" autocomplete="off" maxlength="33" placeholder="" class="regular-text" class="mailserver-pass-wrap">
                 <button type="button" class="button wp-hide-pw hide-if-no-js" id="toggle"><span class="dashicons dashicons-visibility"></span></button>
               </span>
               <p class="description"><?php if ($token==''): ?><?php echo __('Upiši i spremi promjene kako bi se prikazale ostale opcije.', 'solo-for-woocommerce'); ?><?php else: ?><a href="#" class="provjera"><?php echo __('Provjeri valjanost tokena', 'solo-for-woocommerce'); ?></a><?php endif; ?></p>
@@ -132,7 +163,7 @@ switch($tab):
               <label for="tip_usluge"><?php echo __('Tip usluge', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši redni broj glavnog tipa usluge iz web sučelja > Usluge > Tipovi usluga.<br>Koristi se samo za generiranje poziva na broj.', 'solo-for-woocommerce'); ?>"></sup></label>
             </th>
             <td>
-              <input type="text" name="solo_woocommerce_postavke[tip_usluge]" id="tip_usluge" value="<?php echo $tip_usluge; ?>" autocorrect="off" autocomplete="off" maxlength="2" placeholder="" class="small-text int">
+              <input type="text" name="solo_woocommerce_postavke[tip_usluge]" id="tip_usluge" value="<?php echo esc_attr($tip_usluge); ?>" autocorrect="off" autocomplete="off" maxlength="2" placeholder="" class="small-text int">
               <p class="description"><?php echo __('Nije obavezno upisati.', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
@@ -183,21 +214,30 @@ switch($tab):
               <label for="rok_placanja"><?php echo __('Rok plaćanja', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši broj dana koji se dodaje na datum izrade računa ili ponude, a do kojeg kupac treba platiti.<br>Ako nije upisano, Solo će staviti zadani broj dana za rok plaćanja (7) ili će kopirati s prethodnog računa ili ponude.', 'solo-for-woocommerce'); ?>"></sup></label>
             </th>
             <td>
-              <input type="text" name="solo_woocommerce_postavke[rok_placanja]" id="rok_placanja" value="<?php echo $rok_placanja; ?>" autocorrect="off" autocomplete="off" maxlength="2" placeholder="" class="small-text int">
+              <input type="text" name="solo_woocommerce_postavke[rok_placanja]" id="rok_placanja" value="<?php echo esc_attr($rok_placanja); ?>" autocorrect="off" autocomplete="off" maxlength="2" placeholder="" class="small-text int">
               <p class="description"><?php echo __('Nije obavezno upisati.', 'solo-for-woocommerce'); ?></p>
+            </td>
+          </tr>
+          <tr>
+            <th>
+              <label for="rok_placanja"><?php echo __('KPD oznaka', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Ova KPD oznaka će se koristiti u svim stavkama narudžbe ako ne odabereš KPD oznaku u samom proizvodu.', 'solo-for-woocommerce'); ?>"></sup></label>
+            </th>
+            <td>
+              <input type="text" name="solo_woocommerce_postavke[kpd]" value="<?php echo esc_attr($kpd); ?>" autocorrect="off" autocomplete="off" maxlength="8" placeholder="">
+              <p class="description"><?php echo __('Prikazuje se samo na B2B računima.', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
           <tr>
             <th><label for="napomene_racun"><?php echo __('Napomene na računu', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši napomene koje će se pojaviti na svakom računu.<br>Solo prihvaća do najviše 1000 znakova.', 'solo-for-woocommerce'); ?>"></sup></label></th>
             <td>
-              <textarea name="solo_woocommerce_postavke[napomene_racun]" id="napomene_racun" rows="2" maxlength="1000" class="large-text"><?php echo $napomene_racun; ?></textarea>
+              <textarea name="solo_woocommerce_postavke[napomene_racun]" id="napomene_racun" rows="2" maxlength="1000" class="large-text"><?php echo esc_textarea($napomene_racun); ?></textarea>
               <p class="description"><?php echo __('Nije obavezno upisati.', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
           <tr>
             <th><label for="napomene_ponuda"><?php echo __('Napomene na ponudi', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši napomene koje će se pojaviti na svakoj ponudi.<br>Solo prihvaća do najviše 1000 znakova.', 'solo-for-woocommerce'); ?>"></sup></label></th>
             <td>
-              <textarea name="solo_woocommerce_postavke[napomene_ponuda]" id="napomene_ponuda" rows="2" maxlength="1000" class="large-text"><?php echo $napomene_ponuda; ?></textarea>
+              <textarea name="solo_woocommerce_postavke[napomene_ponuda]" id="napomene_ponuda" rows="2" maxlength="1000" class="large-text"><?php echo esc_textarea($napomene_ponuda); ?></textarea>
               <p class="description"><?php echo __('Nije obavezno upisati.', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
@@ -206,7 +246,7 @@ switch($tab):
             <td>
               <select name="solo_woocommerce_postavke[iban]">
 <?php
-		$ibans = [__('Glavni IBAN', 'solo-for-woocommerce') => 1, __('Drugi IBAN (ako postoji)', 'solo-for-woocommerce') => 2];
+		$ibans = [__('Glavni IBAN', 'solo-for-woocommerce') => 1, __('Drugi IBAN (ako postoji)', 'solo-for-woocommerce') => 2, __('Treći IBAN (ako postoji)', 'solo-for-woocommerce') => 3];
 
 		foreach ($ibans as $key => $value) {
 			echo '<option value="' . $value . '"' . (($iban==$value) ? ' selected' : '') . '>' . $key . '</option>';
@@ -253,24 +293,33 @@ switch($tab):
 
 				// Beautify gateway names
 				$translations = array(
-					'bacs' => __('Uplata na žiro račun', 'solo-for-woocommerce'),
-					'cheque' => __('Plaćanje čekom (fiskalizacija)', 'solo-for-woocommerce'),
+					'bacs' => __('Uplata na transakcijski račun', 'solo-for-woocommerce'),
 					'cod' => __('Plaćanje pri pouzeću', 'solo-for-woocommerce'),
-					'stripe' => __('Stripe (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'stripe_sepa' => __('Stripe SEPA uplata', 'solo-for-woocommerce'),
-					'braintree_credit_card' => __('Braintree (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'braintree_paypal' => __('Braintree (PayPal)', 'solo-for-woocommerce'),
+					'stripe' => __('Stripe (kartice)', 'solo-for-woocommerce'),
+					'stripe_sepa' => __('Stripe (transakcijski račun)', 'solo-for-woocommerce'),
 					'paypal' => __('PayPal', 'solo-for-woocommerce'),
-					'ppec_paypal' => __('PayPal', 'solo-for-woocommerce'),
+					'ppec_paypal' => __('PayPal (Express Checkout)', 'solo-for-woocommerce'),
 					'ppcp-gateway' => __('PayPal', 'solo-for-woocommerce'),
-					'corvuspay' => __('CorvusPay (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'monri' => __('Monri (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'mypos_virtual' => __('myPOS (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'wooplatnica-croatia' => __('Uplatnica', 'solo-for-woocommerce'),
-					'erste-kekspay-woocommerce' => __('KEKS Pay', 'solo-for-woocommerce'),
-					'eh_paypal_express' => __('PayPal Express (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'revolut_cc' => __('Revolut (kartice, fiskalizacija)', 'solo-for-woocommerce'),
-					'aircash-woocommerce' => __('Aircash (kartice, fiskalizacija)', 'solo-for-woocommerce')
+					'braintree_credit_card' => __('Braintree (kartice)', 'solo-for-woocommerce'),
+					'braintree_paypal' => __('Braintree (PayPal)', 'solo-for-woocommerce'),
+					'corvuspay' => __('CorvusPay (kartice)', 'solo-for-woocommerce'),
+					'monri' => __('Monri (kartice)', 'solo-for-woocommerce'),
+					'mypos_virtual' => __('myPOS (kartice)', 'solo-for-woocommerce'),
+					'wooplatnica-croatia' => __('Uplatnica (transakcijski račun)', 'solo-for-woocommerce'),
+					'erste-kekspay-woocommerce' => __('KEKS Pay (transakcijski račun)', 'solo-for-woocommerce'),
+					'eh_paypal_express' => __('PayPal Express (kartice)', 'solo-for-woocommerce'),
+					'revolut_cc' => __('Revolut (kartice)', 'solo-for-woocommerce'),
+					'aircash-woocommerce' => __('Aircash (kartice)', 'solo-for-woocommerce'),
+					'woocommerce_payments' => __('WooPayments (kartice)', 'solo-for-woocommerce'),
+					'woocommerce_payments_sepa'       => __('WooPayments (transakcijski račun)', 'solo-for-woocommerce'),
+					'woocommerce_payments_apple_pay'  => __('WooPayments (Apple Pay)', 'solo-for-woocommerce'),
+					'woocommerce_payments_google_pay' => __('WooPayments (Google Pay)', 'solo-for-woocommerce'),
+					'teya_payments' => __('Teya (kartice)', 'solo-for-woocommerce'),
+					'borgun' => __('Teya (kartice)', 'solo-for-woocommerce'),
+					'vivacom_smart' => __('Viva Wallet (kartice)', 'solo-for-woocommerce'),
+					'mollie_wc_gateway_creditcard' => __('Mollie (kartice)', 'solo-for-woocommerce'),
+					'mollie_wc_gateway_banktransfer' => __('Mollie (transakcijski račun)', 'solo-for-woocommerce'),
+					'mollie_wc_gateway_paypal' => __('Mollie (PayPal)', 'solo-for-woocommerce'),
 				);
 
 				// Show only available payments
@@ -287,7 +336,7 @@ switch($tab):
 ?>
       <div class="card<?php echo $color; ?>">
         <h3><a href="admin.php?page=wc-settings&tab=checkout&section=<?php echo esc_attr($gateway_id); ?>" target="_blank"><?php echo $gateway_title; ?></a></h3>
-        <p><?php echo $gateway_description; ?></p>
+        <p><?php echo wp_kses_post($gateway_description); ?></p>
         <hr>
         <label for="<?php echo esc_attr($gateway_id); ?>"><?php echo __('Automatski kreiraj', 'solo-for-woocommerce'); ?></label>
         <select name="solo_woocommerce_postavke[<?php echo esc_attr($gateway_id); ?>1]" id="<?php echo esc_attr($gateway_id); ?>">
@@ -406,13 +455,13 @@ switch($tab):
           <tr>
             <th><label for="naslov"><?php echo __('Naslov poruke', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši naslov e-mail poruke koju će kupac dobiti.', 'solo-for-woocommerce'); ?>"></sup></label></th>
             <td>
-              <input type="text" name="solo_woocommerce_postavke[naslov]" id="naslov" value="<?php echo $naslov; ?>" autocorrect="off" autocomplete="off" maxlength="100" placeholder="" class="regular-text">
+              <input type="text" name="solo_woocommerce_postavke[naslov]" id="naslov" value="<?php echo esc_attr($naslov); ?>" autocorrect="off" autocomplete="off" maxlength="100" placeholder="" class="regular-text">
             </td>
           </tr>
           <tr>
             <th><label for="poruka"><?php echo __('Sadržaj poruke', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Upiši sadržaj e-mail poruke koju će kupac dobiti.<br>HTML formatiranje nije podržano.', 'solo-for-woocommerce'); ?>"></sup></label></th>
             <td>
-              <textarea name="solo_woocommerce_postavke[poruka]" id="poruka" rows="8" class="large-text"><?php echo $poruka; ?></textarea>
+              <textarea name="solo_woocommerce_postavke[poruka]" id="poruka" rows="8" class="large-text"><?php echo esc_textarea($poruka); ?></textarea>
               <p class="description">*<?php echo __('PDF kopija dokumenta će automatski biti u privitku', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
@@ -436,7 +485,7 @@ switch($tab):
 		// Check for table in database
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'solo_woocommerce';
-		if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'")!=$table_name) {
+		if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name))!=$table_name) {
 			// Create table if doesn't exist
 			solo_woocommerce_create_table();
 		}
@@ -449,6 +498,8 @@ switch($tab):
 		if (array_filter($results)) {
 ?>
       <p><?php echo __('Prikazane su sve narudžbe koje je WooCommerce poslao u servis Solo. Imaj na umu da WooCommerce šalje samo narudžbe za koje je u <a href="?page=solo-woocommerce&tab=akcije">"Načini plaćanja i akcije"</a> omogućeno kreiranje dokumenta.', 'solo-for-woocommerce'); ?></p>
+      <p><a href="#" id="ponovi"><?php echo __('Pokušaj ponovo sve neuspješne zahtjeve', 'solo-for-woocommerce'); ?></a>
+        <span></span></p>
       <table class="widefat fixed striped" id="arhiva">
         <colgroup>
           <col style="width:9%;">
@@ -470,64 +521,34 @@ switch($tab):
         </thead>
         <tbody>
 <?php
-			function timeago($datetime) {
-				$seconds_ago = (time() - strtotime($datetime . ' Europe/Zagreb'));
-				$prefix = 'Prije ';
-				$when = $suffix = '';
-				if ($seconds_ago >= 31536000) {
-					return;
-				} elseif ($seconds_ago>=2419200) {
-					return;
-				} elseif ($seconds_ago>=86400) {
-					return;
-				} elseif ($seconds_ago>=3600) {
-					$when = intval($seconds_ago / 3600);
-					if ($when==1) {
-						$suffix = ' sat';
-					} elseif ($when>1 && $when<5) {
-						$suffix = ' sata';
-					} else {
-						$suffix = ' sati';
-					}
-				} elseif ($seconds_ago>=120) {
-					$when = intval($seconds_ago / 60);
-					if ($when==1) {
-						$suffix = ' minutu';
-					} elseif ($when>1 && $when<5) {
-						$suffix = ' minute';
-					} else {
-						$suffix = ' minuta';
-					}
-				} elseif ($seconds_ago>=60) {
-					$prefix = 'Prije minutu';
-				} elseif ($seconds_ago>=0) {
-					$prefix = 'Upravo sada';
-				} else {
-					return;
-				}
-				return $prefix . $when . $suffix;
-			}
-
 			foreach($results as $row) {
 				$api_request = $row->api_request;
 				$api_request = preg_replace('/token=[a-zA-Z0-9]{29}/', 'token=*****************************', $api_request);
-				$api_request = nl2br($api_request);
+				$api_request = nl2br(esc_html($api_request));
 				$api_response = $row->api_response;
-				//$api_response = str_replace(' ', '&nbsp;', $api_response);
-				$api_response = nl2br($api_response);
+				$api_response = nl2br(esc_html($api_response));
 				$created = $row->created;
 				$updated = $row->updated;
 				if (!$updated || $updated=='0000-00-00 00:00:00') $updated = '&ndash;';
 				$sent = $row->sent;
 				if (!$sent || $sent=='0000-00-00 00:00:00') $sent = '&ndash;';
+
+				$response_decoded = json_decode($row->api_response, true);
+				$response_status = $response_decoded['status'] ?? -1;
+				$is_failed = empty($row->api_response) || $response_status !== 0;
 ?>
-          <tr class="shrink">
-            <td data-sortvalue="<?php echo $row->order_id; ?>"><p><a href="post.php?post=<?php echo $row->order_id; ?>&action=edit"><?php echo $row->order_id; ?></a></p></td>
+          <tr class="shrink <?php echo $is_failed ? 'fail' : ''; ?>" data-order-id="<?php echo intval($row->order_id); ?>">
+            <td data-sortvalue="<?php echo intval($row->order_id); ?>"><p><a href="post.php?post=<?php echo intval($row->order_id); ?>&action=edit"><?php echo intval($row->order_id); ?></a></p></td>
             <td><p><?php echo $api_request; ?></p></td>
-            <td><p><?php echo $api_response; ?></p></td>
-            <td data-sortvalue="<?php echo $created; ?>"><p><?php echo $created . '<br>' . timeago($created); ?></p></td>
-            <td data-sortvalue="<?php echo $updated; ?>"><p><?php echo $updated . '<br>' . timeago($updated); ?></p></td>
-            <td data-sortvalue="<?php echo $sent; ?>"><p><?php echo $sent . '<br>' . timeago($sent); ?></p></td>
+            <td>
+<?php if ($is_failed): ?>
+              <a href="#" class="ponovi" data-order-id="<?php echo intval($row->order_id); ?>"><?php echo __('Pokušaj ponovo', 'solo-for-woocommerce'); ?></a>
+<?php endif; ?>
+              <p><?php echo $api_response; ?></p>
+            </td>
+            <td data-sortvalue="<?php echo $created; ?>"><p><?php echo esc_html($created) . '<br>' . timeago($created); ?></p></td>
+            <td data-sortvalue="<?php echo $updated; ?>"><p><?php echo esc_html($updated) . '<br>' . timeago($updated); ?></p></td>
+            <td data-sortvalue="<?php echo $sent; ?>"><p><?php echo esc_html($sent) . '<br>' . timeago($sent); ?></p></td>
           </tr>
 <?php
 				}
