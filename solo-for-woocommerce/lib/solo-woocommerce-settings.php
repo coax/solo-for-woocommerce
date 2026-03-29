@@ -320,6 +320,8 @@ switch($tab):
 					'mollie_wc_gateway_creditcard' => __('Mollie (kartice)', 'solo-for-woocommerce'),
 					'mollie_wc_gateway_banktransfer' => __('Mollie (transakcijski račun)', 'solo-for-woocommerce'),
 					'mollie_wc_gateway_paypal' => __('Mollie (PayPal)', 'solo-for-woocommerce'),
+					'klarna_payments' => __('Klarna Payments (kartice)', 'solo-for-woocommerce'),
+					'kco' => __('Klarna Checkout (kartice)', 'solo-for-woocommerce'),
 				);
 
 				// Show only available payments
@@ -414,6 +416,24 @@ switch($tab):
 				'configure-smtp/configure-smtp.php',
 				// Bit SMTP
 				'bit-smtp/bit_smtp.php',
+				// Solid Mail (formerly WP-SMTP)
+				'solid-mail/solid-mail.php',
+				// Mailgun for WordPress
+				'mailgun/mailgun.php',
+				// SendGrid
+				'sendgrid-email-delivery-simplified/wpsendgrid.php',
+				// Brevo (formerly Sendinblue)
+				'mailin/mailin.php',
+				// Postmark
+				'postmark-approved-wordpress-plugin/postmark.php',
+				// Gmail SMTP
+				'gmail-smtp/main.php',
+				// WP SMTP
+				'wp-smtp/wp-smtp.php',
+				// Easy SMTP
+				'easy-smtp/easy-smtp.php',
+				// Mailpoet
+				'mailpoet/mailpoet.php',
 			);
 
 			// Retrieve the list of active plugins
@@ -448,7 +468,7 @@ switch($tab):
             <th><label for="posalji"><?php echo __('Automatsko slanje', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo __('Uključi ako želiš da se račun ili ponuda automatski pošalju e-mailom kupcu nakon uspješne kupnje ili narudžbe.', 'solo-for-woocommerce'); ?>"></sup></label></th>
             <td>
               <fieldset>
-                <label for="posalji"><input type="checkbox" name="solo_woocommerce_postavke[posalji]" id="posalji" value="1"<?php if ($posalji==1) echo ' checked="checked"' ?>> <?php echo __('Da', 'solo-for-woocommerce'); ?></label>
+                <label for="posalji"><input type="checkbox" name="solo_woocommerce_postavke[posalji]" id="posalji" value="1"<?php if ($posalji==1) echo ' checked="checked"'; if (!$smtp_plugin_active) echo ' disabled'; ?>> <?php echo __('Da', 'solo-for-woocommerce'); ?></label>
               </fieldset>
             </td>
           </tr>

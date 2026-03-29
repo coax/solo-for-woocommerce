@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 2.0
+ * Version: 2.1
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Requires Plugins: woocommerce
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '2.0');
+	define('SOLO_VERSION', '2.1');
 }
 
 //// Activate plugin
@@ -394,7 +394,8 @@ class solo_woocommerce {
 
 		// WooCommerce: show custom fields in admin
 		add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'solo_woocommerce_admin_order_meta'), 15);
-		add_action('manage_shop_order_posts_custom_column', array($this, 'solo_woocommerce_admin_column_meta'), 16);
+		add_action('manage_shop_order_posts_custom_column', array($this, 'solo_woocommerce_admin_column_meta'), 16, 2);
+		add_action('manage_woocommerce_page_wc-orders_custom_column', array($this, 'solo_woocommerce_admin_column_meta'), 16, 2);
 		add_action('woocommerce_order_details_after_order_table', array($this, 'solo_woocommerce_customer_order_meta'), 17);
 
 		// Scheduled job for calling Solo API
@@ -414,6 +415,10 @@ class solo_woocommerce {
 				\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
 			}
 		});
+
+		// Manual sending from WooCommerce orders table
+		add_filter('woocommerce_order_actions', array($this, 'solo_woocommerce_add_order_action'));
+		add_action('woocommerce_order_action_solo_send', array($this, 'solo_woocommerce_manual_send'));
 	}
 
 	//// Show notices
@@ -540,16 +545,36 @@ class solo_woocommerce {
 		$naziv_tvrtke = $order->get_meta('_company_name');
 		$adresa_tvrtke = $order->get_meta('_company_address');
 		$oib = $order->get_meta('_vat_number');
-		if ($naziv_tvrtke) echo '<p><strong>' . __('Podaci za R1 račun', 'solo-for-woocommerce') . ':</strong><br>' . esc_html($naziv_tvrtke) . '<br>' . esc_html($adresa_tvrtke) . '<br>' . esc_html($oib) . '</p>';
+		$is_block_checkout = $order->get_meta('_wc_other/solo-for-woocommerce/company_name') !== '';
+		if ($naziv_tvrtke && !$is_block_checkout) {
+			echo '<p><strong>' . __('Podaci za R1 račun', 'solo-for-woocommerce') . ':</strong><br>' . esc_html($naziv_tvrtke) . '<br>' . esc_html($adresa_tvrtke) . '<br>' . esc_html($oib) . '</p>';
+		}
 	}
 
-	public function solo_woocommerce_admin_column_meta($column) {
-		if ($column=='order_number') {
-			global $the_order;
-
-			$naziv_tvrtke = $the_order->get_meta('_company_name');
+	public function solo_woocommerce_admin_column_meta($column, $order = null) {
+		if ($column === 'order_number') {
+			if (!$order) {
+				global $the_order;
+				$order = $the_order;
+			}
+			if (!$order) return;
+			$naziv_tvrtke = $order->get_meta('_company_name');
 			if ($naziv_tvrtke) echo '<br>' . esc_html($naziv_tvrtke);
 		}
+	}
+
+	//// Add "Pošalji u Solo" to WooCommerce order actions dropdown
+	public function solo_woocommerce_add_order_action($actions) {
+		$actions['solo_send'] = __('Pošalji u Solo', 'solo-for-woocommerce');
+		return $actions;
+	}
+
+	//// Handle manual send from order actions dropdown
+	public function solo_woocommerce_manual_send($order) {
+		$order_id = $order->get_id();
+		$old_status = 'pending';
+		$new_status = $order->get_status();
+		$this->solo_woocommerce_process_order($order_id, $old_status, $new_status);
 	}
 
 	//// Show custom fields to customer
@@ -557,7 +582,8 @@ class solo_woocommerce {
 		$naziv_tvrtke = $order->get_meta('_company_name');
 		$adresa_tvrtke = $order->get_meta('_company_address');
 		$oib = $order->get_meta('_vat_number');
-		if ($naziv_tvrtke) {
+		$is_block_checkout = $order->get_meta('_wc_other/solo-for-woocommerce/company_name') !== '';
+		if ($naziv_tvrtke && !$is_block_checkout) {
 			echo '<h2 class="woocommerce-column__title">' . __('Podaci za R1 račun', 'solo-for-woocommerce') . '</h2>';
 			echo '<p>' . esc_html($naziv_tvrtke) . '<br>' . esc_html($adresa_tvrtke) . '<br>' . esc_html($oib) . '</p>';
 		}
@@ -857,15 +883,25 @@ class solo_woocommerce {
 				}
 			}
 
+/*
+			// Discounted item will get current item price, otherwise uses order item price
 			$item_regular_price = wc_get_price_excluding_tax($product, array('price' => $item->get_subtotal() / $item->get_quantity()));
-			$item_actual_price = wc_get_price_excluding_tax($product, array('price' => $item->get_total() / $item->get_quantity()));
 			$item_discount = 0;
-			if ($item_actual_price < $item_regular_price && $item_regular_price > 0) {
-				$item_discount = 100 - (($item_actual_price / $item_regular_price) * 100);
-				$item_discount = substr($item_discount, 0, 8);
-				$item_discount = number_format($item_discount, 4, ',', '');
+			if ($product->is_on_sale()) {
+				$regular = wc_get_price_excluding_tax($product, array('price' => $product->get_regular_price()));
+				$sale = wc_get_price_excluding_tax($product, array('price' => $product->get_sale_price()));
+				if ($regular > 0) {
+					$item_discount = 100 - (($sale / $regular) * 100);
+					$item_discount = substr($item_discount, 0, 8);
+					$item_discount = number_format($item_discount, 4, ',', '');
+				}
+				$item_regular_price = $regular;
 			}
 			$item_price = number_format(round($item_regular_price, 2), 2, ',', '');
+*/
+			$item_price = wc_get_price_excluding_tax($product, array('price' => $item->get_subtotal() / $item->get_quantity()));
+			$item_price = number_format(round($item_price, 2), 2, ',', '');
+			$item_discount = 0;
 			$item_quantity = str_replace('.', ',', $item_quantity);
 			$item_discount = str_replace('.', ',', $item_discount);
 
@@ -1049,6 +1085,8 @@ class solo_woocommerce {
 			'mollie_wc_gateway_creditcard' => 3,
 			'mollie_wc_gateway_banktransfer' => 1,
 			'mollie_wc_gateway_paypal' => 1,
+			'klarna_payments' => 3,
+			'kco' => 3,
 		);
 
 		if (!isset($payment_map[$payment_method])) return;

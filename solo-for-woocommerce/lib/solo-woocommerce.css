@@ -15,3 +15,4 @@ table#arhiva tr.fail td {background-color:#fdecea;}
 table#arhiva tr.success td {background-color:#edfaef;}
 .pricekaj:after {content:''; animation:dots 1.5s steps(3,end) infinite;}
 @keyframes dots {0%{content:''}33%{content:'.'}66%{content:'..'}100%{content:'...'}}
+#adminmenu a[href="admin.php?page=solo-woocommerce"]:before {content:''; display:inline-block; width:16px; height:16px; background:url(solo-for-woocommerce.png) center/cover no-repeat; border-radius:2px; vertical-align:middle; margin-right:6px; position:relative; top:-1px;}

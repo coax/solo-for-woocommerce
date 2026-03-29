@@ -47,6 +47,7 @@ Dodatak automatski prepoznaje načine plaćanja u WooCommerce (ako su dostupni/o
 - [Teya](https://wordpress.org/plugins/teya-payments-for-woocommerce/)
 - [Viva](https://wordpress.org/plugins/viva-com-smart-for-woocommerce/)
 - [Mollie](https://wordpress.org/plugins/mollie-payments-for-woocommerce/)
+- [Klarna](https://wordpress.org/plugins/klarna-payments-for-woocommerce/)
 
 Pri kreiranju dokumenta u Solo, dodatak će automatski poslati informacije o načinu plaćanja i Solo će sam odlučiti treba li fiskalizirati račun. Ovaj dodatak ne šalje eRačune.
 
