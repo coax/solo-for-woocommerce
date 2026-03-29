@@ -2,7 +2,7 @@
 
 **Solo for WooCommerce** je besplatni dodatak na postojeći [servis Solo](https://solo.com.hr). Njegova funkcionalnost je automatsko kreiranje računa i ponuda za narudžbe koje primiš u svojoj WooCommerce (WordPress) e-trgovini.
 
-**[Klikni ovdje i preuzmi najnoviju verziju dodatka](https://github.com/coax/solo-for-woocommerce/releases/download/v2.0/solo-for-woocommerce.zip)**
+**[Klikni ovdje i preuzmi najnoviju verziju dodatka](https://github.com/coax/solo-for-woocommerce/releases/download/v2.1/solo-for-woocommerce.zip)**
 
 ##
 
