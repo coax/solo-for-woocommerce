@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 2.1
+ * Version: 2.2
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Requires Plugins: woocommerce
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '2.1');
+	define('SOLO_VERSION', '2.2');
 }
 
 //// Activate plugin
@@ -295,7 +295,7 @@ function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 		if (!$order) return;
 		$billing_email = $order->get_billing_email();
 
-		// Set download folder — private subfolder, not publicly accessible
+		// Set download folder - private subfolder, not publicly accessible
 		$upload_dir = wp_upload_dir();
 		$folder = $upload_dir['basedir'] . '/racuni/';
 		if (!file_exists($folder)) {
@@ -530,7 +530,7 @@ class solo_woocommerce {
 
 	//// Save custom fields after checkout
 	function solo_woocommerce_custom_meta($order_id) {
-		if (!empty($_POST['vat_number'])) {
+		if (!empty($_POST['vat_checkbox']) && !empty($_POST['vat_number'])) {
 			$order = wc_get_order($order_id);
 			if (!$order) return;
 			$order->update_meta_data('_company_name', sanitize_text_field($_POST['company_name']));
@@ -542,6 +542,7 @@ class solo_woocommerce {
 
 	//// Show custom fields to admin
 	public function solo_woocommerce_admin_order_meta($order) {
+		if (!$order || !is_a($order, 'WC_Abstract_Order')) return;
 		$naziv_tvrtke = $order->get_meta('_company_name');
 		$adresa_tvrtke = $order->get_meta('_company_address');
 		$oib = $order->get_meta('_vat_number');
@@ -553,11 +554,11 @@ class solo_woocommerce {
 
 	public function solo_woocommerce_admin_column_meta($column, $order = null) {
 		if ($column === 'order_number') {
-			if (!$order) {
+			if (!$order || is_int($order)) {
 				global $the_order;
 				$order = $the_order;
 			}
-			if (!$order) return;
+			if (!$order || !is_a($order, 'WC_Abstract_Order')) return;
 			$naziv_tvrtke = $order->get_meta('_company_name');
 			if ($naziv_tvrtke) echo '<br>' . esc_html($naziv_tvrtke);
 		}
@@ -579,6 +580,7 @@ class solo_woocommerce {
 
 	//// Show custom fields to customer
 	public function solo_woocommerce_customer_order_meta($order) {
+		if (!$order || !is_a($order, 'WC_Abstract_Order')) return;
 		$naziv_tvrtke = $order->get_meta('_company_name');
 		$adresa_tvrtke = $order->get_meta('_company_address');
 		$oib = $order->get_meta('_vat_number');
@@ -818,9 +820,14 @@ class solo_woocommerce {
 		$kupac_ime = $order->get_billing_first_name();
 		$kupac_prezime = $order->get_billing_last_name();
 		$kupac_naziv = $kupac_ime . ' ' . $kupac_prezime;
+		$r1_checkbox = $order->get_meta('_wc_other/solo-for-woocommerce/r1');
 		$naziv_tvrtke = $order->get_meta('_company_name');
 		$adresa_tvrtke = $order->get_meta('_company_address');
 		$kupac_oib = $order->get_meta('_vat_number');
+		// If block checkout, respect the R1 checkbox - clear data if unchecked
+		if ($r1_checkbox === '0') {
+			$naziv_tvrtke = $adresa_tvrtke = $kupac_oib = '';
+		}
 		if (!empty($naziv_tvrtke)) $kupac_naziv = $naziv_tvrtke;
 		$kupac_adresa = $order->get_billing_address_1();
 		if (!empty($order->get_billing_address_2())) $kupac_adresa .= ' ' . $order->get_billing_address_2();
@@ -962,7 +969,7 @@ class solo_woocommerce {
 
 				$i++;
 				$payload .= '&usluga=' . $i . PHP_EOL;
-				if (!empty($kpd) && $tip_kupca == 2) $payload .= '&kpd_' . $i . '=' . urlencode($kpd) . PHP_EOL;
+				if ($tip_kupca == 2) $payload .= '&kpd_' . $i . '=' . urlencode('53.20.09') . PHP_EOL;
 				$payload .= '&opis_usluge_' . $i . '=' . urlencode($fee_name) . PHP_EOL;
 				$payload .= '&jed_mjera_' . $i . '=1' . PHP_EOL;
 				$payload .= '&cijena_' . $i . '=' . number_format(round($fee_total, 2), 2, ',', '') . PHP_EOL;
@@ -981,7 +988,7 @@ class solo_woocommerce {
 			$shipping_price = number_format(round($shipping_price, 2), 2, ',', '');
 
 			$payload .= '&usluga=' . $i . PHP_EOL;
-			if (!empty($kpd) && $tip_kupca == 2) $payload .= '&kpd_' . $i . '=' . urlencode('53.20.09') . PHP_EOL;
+			if ($tip_kupca == 2) $payload .= '&kpd_' . $i . '=' . urlencode('53.20.09') . PHP_EOL;
 			$payload .= '&opis_usluge_' . $i . '=' . urlencode(__('Poštarina', 'solo-for-woocommerce')) . PHP_EOL;
 			$payload .= '&jed_mjera_' . $i . '=1' . PHP_EOL;
 			$payload .= '&cijena_' . $i . '=' . $shipping_price . PHP_EOL;
