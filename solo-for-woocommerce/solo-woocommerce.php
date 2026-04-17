@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 2.2
+ * Version: 2.3
  * Requires at least: 5.2
  * Requires PHP: 7.2
  * Requires Plugins: woocommerce
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 
 //// Plugin version
 if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '2.2');
+	define('SOLO_VERSION', '2.3');
 }
 
 //// Activate plugin
@@ -345,17 +345,44 @@ class solo_woocommerce {
 
 	// Magic function
 	public function __construct() {
-		if (is_admin()) {
-			// Shortcuts
-			$this->plugin_name = 'solo-woocommerce';
+		// Shortcuts
+		$this->plugin_name = 'solo-woocommerce';
 
+		// Declare HPOS compatibility
+		add_action('before_woocommerce_init', function() {
+			if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+				\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+			}
+		});
+
+		// Scheduled jobs
+		add_action('solo_woocommerce_exchange_update', 'solo_woocommerce_exchange');
+		add_action('solo_woocommerce_api_post', 'solo_woocommerce_api_post', 1, 4);
+		add_action('solo_woocommerce_api_get', 'solo_woocommerce_api_get', 2, 3);
+
+		// WooCommerce: process order
+		add_action('woocommerce_order_status_changed', array($this, 'solo_woocommerce_process_order'), 14, 3);
+
+		// WooCommerce checkout
+		if (!is_admin()) {
+			add_filter('woocommerce_checkout_fields', array($this, 'solo_woocommerce_remove_fields'), 11);
+			add_action('woocommerce_before_checkout_billing_form', array($this, 'solo_woocommerce_custom_fields'), 12);
+			add_action('woocommerce_order_details_after_order_table', array($this, 'solo_woocommerce_customer_order_meta'), 17);
+		}
+
+		// WooCommerce blocks and checkout saving
+		add_action('woocommerce_init', array($this, 'solo_woocommerce_register_block_fields'));
+		add_action('woocommerce_set_additional_field_value', array($this, 'solo_woocommerce_save_block_fields'), 10, 4);
+		add_action('woocommerce_checkout_update_order_meta', array($this, 'solo_woocommerce_custom_meta'), 13);
+
+		if (is_admin()) {
 			// Create settings link in WordPress > Plugins
 			add_filter('plugin_action_links_' . plugin_basename(__FILE__), array($this, 'solo_woocommerce_settings_link'));
 
 			// Create settings link inside WooCommerce menu
 			add_action('admin_menu', array($this, 'solo_woocommerce_submenu_link'), 99);
 
-			// Load custom CSS and JS
+			// Load custom CSS and JS only on plugin pages and WooCommerce order/product pages
 			add_action('admin_enqueue_scripts', array($this, 'solo_woocommerce_css_js'));
 
 			// Plugin settings (or update plugin)
@@ -369,56 +396,23 @@ class solo_woocommerce {
 
 			// Ajax retry order
 			add_action('wp_ajax_solo_retry_order', array($this, 'solo_woocommerce_retry_order'));
+
+			// WooCommerce: show custom fields in admin order page
+			add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'solo_woocommerce_admin_order_meta'), 15);
+
+			// WooCommerce: show company name and Solo status in orders list (classic and HPOS)
+			add_action('manage_shop_order_posts_custom_column', array($this, 'solo_woocommerce_admin_column_meta'), 16, 2);
+			add_action('manage_woocommerce_page_wc-orders_custom_column', array($this, 'solo_woocommerce_admin_column_meta'), 16, 2);
+
+			// Per-product KPD oznaka field
+			add_action('woocommerce_product_options_general_product_data', array($this, 'solo_woocommerce_product_kpd_field'));
+			add_action('woocommerce_process_product_meta', array($this, 'solo_woocommerce_save_product_kpd'));
+			add_action('manage_product_posts_custom_column', array($this, 'solo_woocommerce_kpd_column_content'), 20, 2);
+
+			// Manual sending from WooCommerce order actions dropdown
+			add_filter('woocommerce_order_actions', array($this, 'solo_woocommerce_add_order_action'));
+			add_action('woocommerce_order_action_solo_send', array($this, 'solo_woocommerce_manual_send'));
 		}
-
-		// Scheduled job for updating exchange rate
-		add_action('solo_woocommerce_exchange_update', 'solo_woocommerce_exchange');
-
-		// WooCommerce: remove certain fields in checkout
-		add_filter('woocommerce_checkout_fields', array($this, 'solo_woocommerce_remove_fields'), 11);
-
-		// WooCommerce: show custom fields in checkout
-		add_action('woocommerce_before_checkout_billing_form', array($this, 'solo_woocommerce_custom_fields'), 12);
-
-		// WooCommerce blocks: register additional checkout fields
-		add_action('woocommerce_init', array($this, 'solo_woocommerce_register_block_fields'));
-
-		// WooCommerce blocks: save additional checkout fields
-		add_action('woocommerce_set_additional_field_value', array($this, 'solo_woocommerce_save_block_fields'), 10, 4);
-
-		// WooCommerce: save custom fields after checkout
-		add_action('woocommerce_checkout_update_order_meta', array($this, 'solo_woocommerce_custom_meta'), 13);
-
-		// WooCommerce: hooks
-		add_action('woocommerce_order_status_changed', array($this, 'solo_woocommerce_process_order'), 14, 3);
-
-		// WooCommerce: show custom fields in admin
-		add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'solo_woocommerce_admin_order_meta'), 15);
-		add_action('manage_shop_order_posts_custom_column', array($this, 'solo_woocommerce_admin_column_meta'), 16, 2);
-		add_action('manage_woocommerce_page_wc-orders_custom_column', array($this, 'solo_woocommerce_admin_column_meta'), 16, 2);
-		add_action('woocommerce_order_details_after_order_table', array($this, 'solo_woocommerce_customer_order_meta'), 17);
-
-		// Scheduled job for calling Solo API
-		add_action('solo_woocommerce_api_post', 'solo_woocommerce_api_post', 1, 4);
-
-		// Scheduled job for downloading PDF
-		add_action('solo_woocommerce_api_get', 'solo_woocommerce_api_get', 2, 3);
-
-		// Per-product KPD oznaka field
-		add_action('woocommerce_product_options_general_product_data', array($this, 'solo_woocommerce_product_kpd_field'));
-		add_action('woocommerce_process_product_meta', array($this, 'solo_woocommerce_save_product_kpd'));
-		add_action('manage_product_posts_custom_column', array($this, 'solo_woocommerce_kpd_column_content'), 20, 2);
-
-		// Declare HPOS compatibility
-		add_action('before_woocommerce_init', function() {
-			if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
-				\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
-			}
-		});
-
-		// Manual sending from WooCommerce orders table
-		add_filter('woocommerce_order_actions', array($this, 'solo_woocommerce_add_order_action'));
-		add_action('woocommerce_order_action_solo_send', array($this, 'solo_woocommerce_manual_send'));
 	}
 
 	//// Show notices
@@ -611,6 +605,15 @@ class solo_woocommerce {
 
 	//// Load custom CSS and JS
 	public function solo_woocommerce_css_js() {
+		$screen = get_current_screen();
+		$allowed_screens = array(
+			'woocommerce_page_solo-woocommerce',
+			'shop_order',
+			'woocommerce_page_wc-orders',
+			'product',
+		);
+		if (!$screen || !in_array($screen->id, $allowed_screens)) return;
+
 		wp_enqueue_style($this->plugin_name, plugin_dir_url(__FILE__) . 'lib/' . $this->plugin_name . '.css', false, SOLO_VERSION);
 		wp_enqueue_script($this->plugin_name, plugin_dir_url(__FILE__) . 'lib/' . $this->plugin_name . '.js', array('jquery'), SOLO_VERSION);
 		wp_localize_script($this->plugin_name, 'ajax_object', array(
@@ -816,7 +819,7 @@ class solo_woocommerce {
 	}
 
 	//// Build customer data from order
-	private function build_customer_data($order, $order_id) {
+	private function build_customer_data($order) {
 		$kupac_ime = $order->get_billing_first_name();
 		$kupac_prezime = $order->get_billing_last_name();
 		$kupac_naziv = $kupac_ime . ' ' . $kupac_prezime;
@@ -890,27 +893,9 @@ class solo_woocommerce {
 				}
 			}
 
-/*
-			// Discounted item will get current item price, otherwise uses order item price
-			$item_regular_price = wc_get_price_excluding_tax($product, array('price' => $item->get_subtotal() / $item->get_quantity()));
-			$item_discount = 0;
-			if ($product->is_on_sale()) {
-				$regular = wc_get_price_excluding_tax($product, array('price' => $product->get_regular_price()));
-				$sale = wc_get_price_excluding_tax($product, array('price' => $product->get_sale_price()));
-				if ($regular > 0) {
-					$item_discount = 100 - (($sale / $regular) * 100);
-					$item_discount = substr($item_discount, 0, 8);
-					$item_discount = number_format($item_discount, 4, ',', '');
-				}
-				$item_regular_price = $regular;
-			}
-			$item_price = number_format(round($item_regular_price, 2), 2, ',', '');
-*/
-			$item_price = wc_get_price_excluding_tax($product, array('price' => $item->get_subtotal() / $item->get_quantity()));
-			$item_price = number_format(round($item_price, 2), 2, ',', '');
+			$item_price = number_format(round($item->get_subtotal() / $item->get_quantity(), 2), 2, ',', '');
 			$item_discount = 0;
 			$item_quantity = str_replace('.', ',', $item_quantity);
-			$item_discount = str_replace('.', ',', $item_discount);
 
 			$payload .= '&usluga=' . $i . PHP_EOL;
 			$product_kpd = get_post_meta($item->get_product_id(), '_solo_kpd', true);
@@ -1101,7 +1086,7 @@ class solo_woocommerce {
 
 		$grammar = $document_type === 'racun' ? 'racuna' : 'ponude';
 		$url = 'https://api.solo.com.hr/' . $document_type;
-		$customer = $this->build_customer_data($order, $order_id);
+		$customer = $this->build_customer_data($order);
 
 		// Build API request
 		$i = 0;
@@ -1131,9 +1116,13 @@ class solo_woocommerce {
 		// Language
 		if (!empty($jezik_)) $api_request .= '&jezik_' . $grammar . '=' . $jezik_ . PHP_EOL;
 
-		// Ensure table exists
-		if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
-			solo_woocommerce_create_table();
+		// Ensure table exists (cached check to avoid SHOW TABLES on every order)
+		if (!get_transient('solo_woocommerce_table_exists')) {
+			if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
+				solo_woocommerce_create_table();
+			} else {
+				set_transient('solo_woocommerce_table_exists', 1, DAY_IN_SECONDS);
+			}
 		}
 
 		// Save order to database
