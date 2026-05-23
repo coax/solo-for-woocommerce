@@ -85,7 +85,7 @@ if (($installed!=$version_check) && (!isset($_GET['update']))) {
 	// Display notice
 	if (version_compare($installed, $tag, '<') && current_user_can('update_plugins')) {
 ?>
-      <div class="notice notice-info notice-alt"><p><?php echo esc_html__('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo esc_html($tag); ?></a></p><p><a href="<?php echo esc_url(wp_nonce_url('?page=solo-woocommerce&update=true', 'solo_woocommerce_update_nonce')); ?>" class="button button-small button-primary"><?php echo esc_html__('Instaliraj novu verziju', 'solo-for-woocommerce'); ?></a></p></div>
+      <div class="notice notice-info notice-alt"><p><?php echo esc_html__('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo esc_html($tag); ?></a></p><p><a href="<?php echo esc_url(wp_nonce_url('admin.php?page=solo-woocommerce&update=true', 'solo_woocommerce_update_nonce')); ?>" class="button button-small button-primary"><?php echo esc_html__('Instaliraj novu verziju', 'solo-for-woocommerce'); ?></a></p></div>
 <?php
 	}
 }

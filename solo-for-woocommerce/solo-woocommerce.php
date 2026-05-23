@@ -404,6 +404,7 @@ class solo_woocommerce {
 
 			// Plugin settings (or update plugin)
 			add_action('admin_init', array($this, 'solo_woocommerce_settings'));
+			add_action('wp_dashboard_setup', array($this, 'solo_woocommerce_dashboard_widget'));
 
 			// Always show messages
 			add_action('admin_notices', array($this, 'solo_woocommerce_show_messages'));
@@ -1199,6 +1200,24 @@ class solo_woocommerce {
 				echo '<br><span style="color:#999;font-size:11px;">KPD: ' . esc_html($kpd) . '</span>';
 			}
 		}
+	}
+
+	//// WP dashboard update check
+	public function solo_woocommerce_dashboard_widget() {
+		$tag = ltrim(get_transient('solo_woocommerce_tag'), 'v');
+		if (!$tag || !version_compare(SOLO_VERSION, $tag, '<') || !current_user_can('update_plugins')) return;
+		wp_add_dashboard_widget(
+			'solo_woocommerce_widget',
+			__('Solo for WooCommerce', 'solo-for-woocommerce'),
+			array($this, 'solo_woocommerce_dashboard_widget_content')
+		);
+	}
+
+	public function solo_woocommerce_dashboard_widget_content() {
+		$tag = ltrim(get_transient('solo_woocommerce_tag'), 'v');
+?>
+<p><?php echo esc_html__('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo esc_html($tag); ?></a></p>
+<p><a href="<?php echo esc_url(wp_nonce_url('admin.php?page=solo-woocommerce&update=true', 'solo_woocommerce_update_nonce')); ?>" class="button button-small button-primary"><?php echo esc_html__('Instaliraj novu verziju', 'solo-for-woocommerce'); ?></a></p><?php
 	}
 }
 $solo_woocommerce = new solo_woocommerce;
