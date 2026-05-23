@@ -38,8 +38,8 @@ jQuery(document).ready(function($) {
 		var b = $(this), token = $('#token').val();
 		$.ajax({
 			type: 'GET',
-			url: ajax_object.ajax_url,
-			data: {action: 'check_token', token: token, nonce: ajax_object.nonce},
+			url: solo_woocommerce_ajax_object.ajax_url,
+			data: {action: 'solo_woocommerce_check_token', token: token, nonce: solo_woocommerce_ajax_object.nonce},
 			dataType: 'text',
 			beforeSend: function() {
 				b.hide().after('<div class="spinner is-active"></div>');
@@ -55,7 +55,7 @@ jQuery(document).ready(function($) {
 					if (response.status==0) {
 						b.before('Ispravan API token za korisnika <b>' + response.licenca.korisnik + '</b>');
 						if (response.licenca.racuni>3) {
-							b.before('<br>Plaćena licenca traje do ' + response.licenca.datum_isteka);
+							b.before('<br>Plaćena ' + response.licenca.paket + ' licenca traje do ' + response.licenca.datum_isteka);
 						} else {
 							b.before('<br>Koristiš besplatni paket (ograničenje na 3 računa i ponude).');
 						}
@@ -126,11 +126,11 @@ jQuery(document).ready(function($) {
 		link[0].blur();
 		$.ajax({
 			type: 'POST',
-			url: ajax_object.ajax_url,
+			url: solo_woocommerce_ajax_object.ajax_url,
 			data: {
-				action: 'solo_retry_order',
+				action: 'solo_woocommerce_retry_order',
 				order_id: order_id,
-				nonce: ajax_object.retry_nonce
+				nonce: solo_woocommerce_ajax_object.retry_nonce
 			},
 			dataType: 'json',
 			success: function(response) {
@@ -179,7 +179,7 @@ jQuery(document).ready(function($) {
 
 	// KPD autosuggest on product edit page
 	if ($('#kpd').length) {
-		var kpdUrl = (typeof kpd_url !== 'undefined') ? kpd_url : '';
+		var kpdUrl = (typeof kpd_url !== 'undefined') ? kpd_url.url : '';
 		if (!kpdUrl) return;
 		$.getJSON(kpdUrl, function(kpdData) {
 			$('#kpd').select2({

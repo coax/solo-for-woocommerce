@@ -3,14 +3,15 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 2.3
+ * Version: 2.4
  * Requires at least: 5.2
+ * Tested up to: 7.0
  * Requires PHP: 7.2
  * Requires Plugins: woocommerce
  * Author: Solo
  * Author URI: https://solo.com.hr/
- * License: CC BY-NC-ND
- * License URI: https://creativecommons.org/licenses/by-nc-nd/4.0/
+ * License: GPLv3
+ * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Text Domain: solo-for-woocommerce
  * Domain Path: /languages
  */
@@ -20,10 +21,9 @@ if (!defined('WPINC')) {
 	die;
 }
 
-//// Plugin version
-if (!defined('SOLO_VERSION')) {
-	define('SOLO_VERSION', '2.3');
-}
+//// Variables
+define('SOLO_VERSION', '2.4');
+define('SOLO_API_URL', 'https://api.solo.com.hr/');
 
 //// Activate plugin
 register_activation_hook(__FILE__, 'solo_woocommerce_activate');
@@ -31,25 +31,26 @@ register_activation_hook(__FILE__, 'solo_woocommerce_activate');
 function solo_woocommerce_activate() {
 	// Check PHP version
 	if (version_compare(PHP_VERSION, '7.2', '<')) {
-		wp_die(sprintf(__('Solo for WooCommerce dodatak ne podržava PHP %s. Ažuriraj PHP na verziju 7.2 ili noviju.', 'solo-for-woocommerce'), PHP_VERSION), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
+		// translators: %s is the current PHP version number.
+		wp_die(sprintf(esc_html__('Solo for WooCommerce dodatak ne podržava PHP %s. Ažuriraj PHP na verziju 7.2 ili noviju.', 'solo-for-woocommerce'), PHP_VERSION), esc_html__('Greška', 'solo-for-woocommerce'), array("back_link" => true));
 	}
 
 	// Check if WooCommerce plugin installed
 	if (!class_exists('WooCommerce')) {
-		wp_die(__('Solo for WooCommerce ne radi bez WooCommerce dodatka.<br>Prvo instaliraj WooCommerce i zatim aktiviraj ovaj dodatak.', 'solo-for-woocommerce'), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
+		wp_die(esc_html__('Solo for WooCommerce ne radi bez WooCommerce dodatka.<br>Prvo instaliraj WooCommerce i zatim aktiviraj ovaj dodatak.', 'solo-for-woocommerce'), esc_html__('Greška', 'solo-for-woocommerce'), array("back_link" => true));
 	}
 	if (version_compare(get_option('woocommerce_version'), 5, '<')) {
-		wp_die(__('Solo for WooCommerce radi samo s WooCommerce verzijom 5 ili novijom.', 'solo-for-woocommerce'), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
+		wp_die(esc_html__('Solo for WooCommerce radi samo s WooCommerce verzijom 5 ili novijom.', 'solo-for-woocommerce'), esc_html__('Greška', 'solo-for-woocommerce'), array("back_link" => true));
 	}
 
 	// Check if Woo Solo Api plugin installed
 	if (is_plugin_active('woo-solo-api/woo-solo-api.php')) {
-		wp_die(__('Prvo deaktiviraj "Woo Solo Api" dodatak.', 'solo-for-woocommerce'), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
+		wp_die(esc_html__('Prvo deaktiviraj "Woo Solo Api" dodatak.', 'solo-for-woocommerce'), esc_html__('Greška', 'solo-for-woocommerce'), array("back_link" => true));
 	}
 
 	// Check if MX R1 plugin installed
 	if (is_plugin_active('woocommerce-mx-r1/woocommerce-mx-r1.php')) {
-		wp_die(__('Prvo deaktiviraj "WooCommerce MX R1 račun" dodatak.<br>Solo for WooCommerce automatski dodaje polja za pravne osobe (R1 račun) pri naručivanju.', 'solo-for-woocommerce'), __('Greška', 'solo-for-woocommerce'), array("back_link" => true));
+		wp_die(esc_html__('Prvo deaktiviraj "WooCommerce MX R1 račun" dodatak.<br>Solo for WooCommerce automatski dodaje polja za pravne osobe (R1 račun) pri naručivanju.', 'solo-for-woocommerce'), esc_html__('Greška', 'solo-for-woocommerce'), array("back_link" => true));
 	}
 
 	// Add exchange rate to database
@@ -70,8 +71,8 @@ function solo_woocommerce_deactivate() {
 	solo_woocommerce_exchange(4);
 
 	// Delete temporary transients
-	delete_transient('solo_tag');
-	delete_transient('solo_url');
+	delete_transient('solo_woocommerce_tag');
+	delete_transient('solo_woocommerce_url');
 
 	// Inform
 	solo_woocommerce_inform('deactivation');
@@ -87,8 +88,8 @@ function solo_woocommerce_uninstall() {
 	solo_woocommerce_exchange(4);
 
 	// Delete temporary transients
-	delete_transient('solo_tag');
-	delete_transient('solo_url');
+	delete_transient('solo_woocommerce_tag');
+	delete_transient('solo_woocommerce_url');
 
 	// Delete plugin settings from database
 	delete_option('solo_woocommerce_postavke');
@@ -112,7 +113,7 @@ function solo_woocommerce_inform($event) {
 		'woocommerce' => $woo_version
 	);
 
-	wp_remote_post('https://api.solo.com.hr/solo-for-woocommerce', array(
+	wp_remote_post(SOLO_API_URL . 'solo-for-woocommerce', array(
 		'method' => 'POST',
 		'body' => json_encode($plugin_data),
 		'headers' => array(
@@ -148,15 +149,17 @@ function solo_woocommerce_exchange(int $action) {
 			// Read exchange rate from wp_options table
 			$exchange = get_option('solo_woocommerce_tecaj');
 			if (!$exchange) {
-				echo '<br><div class="notice notice-error inline"><p>' . sprintf(__('Tečajna lista nije dostupna. Pokušaj <a href="%s#deactivate-solo-for-woocommerce">deaktivirati</a> i ponovno aktivirati dodatak.', 'solo-for-woocommerce'), admin_url('plugins.php')) . '</p></div>';
+				// translators: %s is the URL to the plugins page.
+				echo '<br><div class="notice notice-error inline"><p>' . sprintf(wp_kses_post(__('Tečajna lista nije dostupna. Pokušaj <a href="%s#deactivate-solo-for-woocommerce">deaktivirati</a> i ponovno aktivirati dodatak.', 'solo-for-woocommerce')), esc_url(admin_url('plugins.php'))) . '</p></div>';
 			} else {
 				$decoded_json = json_decode($exchange, true);
 				$last_updated = isset($decoded_json['datum']) ? $decoded_json['datum'] : '';
-				echo '<p>' . sprintf(__('Tečajna lista je formatirana za Solo gdje se HNB-ov tečaj dijeli s 1 (npr. tečaj za račun ili ponudu u valuti USD treba biti 0,94 umjesto 7,064035).<br>Zadnje ažuriranje: %s. Iduće ažuriranje u %s. Izvor podataka: <a href=\"https://www.hnb.hr/statistika/statisticki-podaci/financijski-sektor/sredisnja-banka-hnb/devizni-tecajevi/referentni-tecajevi-esb-a\" target=\"_blank\">Hrvatska Narodna Banka</a>', 'solo-for-woocommerce'), esc_html($last_updated), get_date_from_gmt(date('H:i', wp_next_scheduled('solo_woocommerce_exchange_update', array(2))), 'H:i')) . '</p>';
+				// translators: %1$s is the last updated date, %2$s is the next update time.
+				echo '<p>' . wp_kses_post(sprintf(__('Tečajna lista je formatirana za Solo gdje se HNB-ov tečaj dijeli s 1 (npr. tečaj za račun ili ponudu u valuti USD treba biti 0,94 umjesto 7,064035).<br>Zadnje ažuriranje: %1$s. Iduće ažuriranje u %2$s. Izvor podataka: <a href="https://www.hnb.hr/statistika/statisticki-podaci/financijski-sektor/sredisnja-banka-hnb/devizni-tecajevi/referentni-tecajevi-esb-a" target="_blank">Hrvatska Narodna Banka</a>', 'solo-for-woocommerce'), esc_html($last_updated), esc_html(get_date_from_gmt(gmdate('H:i', wp_next_scheduled('solo_woocommerce_exchange_update', array(2))), 'H:i')))) . '</p>';
 				echo '<table class="widefat striped" style="width:auto;"><colgroup><col style="width:50%;"><col style="width:50%;"></colgroup><thead><th>Valuta</th><th>Tečaj</th></thead><tbody>';
 				foreach($decoded_json as $key => $val) {
 					if ($key=='datum') continue; // Remove date from view
-					echo '<tr><td>1 ' . $key . '</td><td>' . str_replace('.', ',', $val) . ' EUR</td></tr>';
+					echo '<tr><td>1 ' . esc_html($key) . '</td><td>' . esc_html(str_replace('.', ',', $val)) . ' EUR</td></tr>';
 				}
 				echo '</tbody></table>';
 			}
@@ -184,7 +187,7 @@ function solo_woocommerce_exchange_fetch() {
 		$decoded_json = json_decode($data, true);
 		if (empty($decoded_json)) return '';
 		// Parse JSON
-		$array = array('datum' => get_date_from_gmt(date('Y-m-d H:i:s')));
+		$array = array('datum' => get_date_from_gmt(gmdate('Y-m-d H:i:s')));
 		foreach($decoded_json as $item) {
 			// Filter and reuse results
 			$array[$item['valuta']] = substr(1/solo_woocommerce_floatvalue($item['srednji_tecaj']), 0, 8);
@@ -209,8 +212,10 @@ function solo_woocommerce_create_table() {
 	$table_name = $wpdb->prefix . 'solo_woocommerce';
 
 	// Prevent table creation if already exists
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name))!=$table_name) {
 		// Define table structure
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange
 		$sql = "CREATE TABLE $table_name (
 			id mediumint(9) NOT NULL AUTO_INCREMENT,
 			order_id varchar(50) NOT NULL,
@@ -251,6 +256,7 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 	// Save API response to our table
 	global $wpdb;
 	$table_name = $wpdb->prefix . 'solo_woocommerce';
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	$wpdb->update(
 		$table_name,
 		array(
@@ -300,8 +306,13 @@ function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 		$folder = $upload_dir['basedir'] . '/racuni/';
 		if (!file_exists($folder)) {
 			wp_mkdir_p($folder);
-			file_put_contents($folder . '.htaccess', 'deny from all');
-			file_put_contents($folder . 'index.php', '<?php // These are not the droids you\'re looking for.');
+			global $wp_filesystem;
+			if (empty($wp_filesystem)) {
+				require_once ABSPATH . 'wp-admin/includes/file.php';
+				WP_Filesystem();
+			}
+			$wp_filesystem->put_contents($folder . '.htaccess', 'deny from all', FS_CHMOD_FILE);
+			$wp_filesystem->put_contents($folder . 'index.php', '<?php // These are not the droids you\'re looking for.', FS_CHMOD_FILE);
 		}
 
 		// Unique filename per order to prevent overwrites on concurrent orders
@@ -312,7 +323,12 @@ function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 		if (is_wp_error($remote_file)) {
 			return;
 		}
-		file_put_contents($local_file, wp_remote_retrieve_body($remote_file));
+		global $wp_filesystem;
+		if (empty($wp_filesystem)) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			WP_Filesystem();
+		}
+		$wp_filesystem->put_contents($local_file, wp_remote_retrieve_body($remote_file), FS_CHMOD_FILE);
 
 		// Send e-mail with PDF in attachment
 		$headers = '';
@@ -322,6 +338,7 @@ function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 			// Save sent date
 			global $wpdb;
 			$table_name = $wpdb->prefix . 'solo_woocommerce';
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$wpdb->update(
 				$table_name,
 				array(
@@ -392,10 +409,10 @@ class solo_woocommerce {
 			add_action('admin_notices', array($this, 'solo_woocommerce_show_messages'));
 
 			// Ajax token check
-			add_action('wp_ajax_check_token', array($this, 'solo_woocommerce_check_token'));
+			add_action('wp_ajax_solo_woocommerce_check_token', array($this, 'solo_woocommerce_check_token'));
 
 			// Ajax retry order
-			add_action('wp_ajax_solo_retry_order', array($this, 'solo_woocommerce_retry_order'));
+			add_action('wp_ajax_solo_woocommerce_retry_order', array($this, 'solo_woocommerce_retry_order'));
 
 			// WooCommerce: show custom fields in admin order page
 			add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'solo_woocommerce_admin_order_meta'), 15);
@@ -433,14 +450,14 @@ class solo_woocommerce {
 
 		woocommerce_register_additional_checkout_field(array(
 			'id' => 'solo-for-woocommerce/r1',
-			'label' => __('Trebam R1 račun', 'solo-for-woocommerce'),
+			'label' => esc_html__('Trebam R1 račun', 'solo-for-woocommerce'),
 			'location' => 'contact',
 			'type' => 'checkbox',
 		));
 
 		woocommerce_register_additional_checkout_field(array(
 			'id' => 'solo-for-woocommerce/company_name',
-			'label' => __('Naziv tvrtke', 'solo-for-woocommerce'),
+			'label' => esc_html__('Naziv tvrtke', 'solo-for-woocommerce'),
 			'location' => 'contact',
 			'type' => 'text',
 			'required' => false,
@@ -448,7 +465,7 @@ class solo_woocommerce {
 
 		woocommerce_register_additional_checkout_field(array(
 			'id' => 'solo-for-woocommerce/company_address',
-			'label' => __('Adresa tvrtke', 'solo-for-woocommerce'),
+			'label' => esc_html__('Adresa tvrtke', 'solo-for-woocommerce'),
 			'location' => 'contact',
 			'type' => 'text',
 			'required' => false,
@@ -456,7 +473,7 @@ class solo_woocommerce {
 
 		woocommerce_register_additional_checkout_field(array(
 			'id' => 'solo-for-woocommerce/vat_number',
-			'label' => __('OIB tvrtke', 'solo-for-woocommerce'),
+			'label' => esc_html__('OIB tvrtke', 'solo-for-woocommerce'),
 			'location' => 'contact',
 			'type' => 'text',
 			'required' => false,
@@ -485,15 +502,15 @@ class solo_woocommerce {
 		echo '<div id="vat_number">';
 		woocommerce_form_field('vat_checkbox', array(
 				'type' => 'checkbox',
-				'label' => __('Trebam R1 račun', 'solo-for-woocommerce'),
+				'label' => esc_html__('Trebam R1 račun', 'solo-for-woocommerce'),
 				'required' => false,
 				'class' => array('input-checkbox')
 			)
 		);
 		woocommerce_form_field('company_name', array(
 				'type' => 'text',
-				'label' => __('Naziv tvrtke', 'solo-for-woocommerce'),
-				'placeholder' => __('Naziv tvrtke', 'solo-for-woocommerce'),
+				'label' => esc_html__('Naziv tvrtke', 'solo-for-woocommerce'),
+				'placeholder' => esc_html__('Naziv tvrtke', 'solo-for-woocommerce'),
 				'required' => false,
 				'class' => array('form-row-wide hidden')
 			),
@@ -501,8 +518,8 @@ class solo_woocommerce {
 		);
 		woocommerce_form_field('company_address', array(
 				'type' => 'text',
-				'label' => __('Adresa', 'solo-for-woocommerce'),
-				'placeholder' => __('Adresa', 'solo-for-woocommerce'),
+				'label' => esc_html__('Adresa', 'solo-for-woocommerce'),
+				'placeholder' => esc_html__('Adresa', 'solo-for-woocommerce'),
 				'required' => false,
 				'class' => array('form-row-wide hidden')
 			),
@@ -510,26 +527,33 @@ class solo_woocommerce {
 		);
 		woocommerce_form_field('vat_number', array(
 				'type' => 'text',
-				'label' => __('OIB', 'solo-for-woocommerce'),
-				'placeholder' => __('OIB', 'solo-for-woocommerce'),
+				'label' => esc_html__('OIB', 'solo-for-woocommerce'),
+				'placeholder' => esc_html__('OIB', 'solo-for-woocommerce'),
 				'required' => false,
 				'class' => array('form-row-wide hidden')
 			),
 			$fields->get_value('vat_number')
 		);
 		echo '</div>';
-		echo '<style>#vat_number .hidden{display:none;}</style>';
-		echo '<script>jQuery(function($){$("#vat_number [type=checkbox]").on("click",function(){if($(this).is(":checked")){$("#company_name_field,#company_address_field,#vat_number_field").removeClass("hidden");$("#company_name").focus();}else{$("#company_name_field,#company_address_field,#vat_number_field").addClass("hidden");}});});</script>';
+
+		wp_register_script($this->plugin_name . '-checkout', false);
+		wp_enqueue_script($this->plugin_name . '-checkout');
+		wp_add_inline_script($this->plugin_name . '-checkout', 'jQuery(function($){$("#vat_number [type=checkbox]").on("click",function(){if($(this).is(":checked")){$("#company_name_field,#company_address_field,#vat_number_field").removeClass("hidden");$("#company_name").focus();}else{$("#company_name_field,#company_address_field,#vat_number_field").addClass("hidden");}});});');
+
+		wp_register_style($this->plugin_name . '-checkout', false);
+		wp_enqueue_style($this->plugin_name . '-checkout');
+		wp_add_inline_style($this->plugin_name . '-checkout', '#vat_number .hidden{display:none;}');
 	}
 
 	//// Save custom fields after checkout
 	function solo_woocommerce_custom_meta($order_id) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		if (!empty($_POST['vat_checkbox']) && !empty($_POST['vat_number'])) {
 			$order = wc_get_order($order_id);
 			if (!$order) return;
-			$order->update_meta_data('_company_name', sanitize_text_field($_POST['company_name']));
-			$order->update_meta_data('_company_address', sanitize_text_field($_POST['company_address']));
-			$order->update_meta_data('_vat_number', sanitize_text_field($_POST['vat_number']));
+			$order->update_meta_data('_company_name', sanitize_text_field(wp_unslash($_POST['company_name'] ?? ''))); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$order->update_meta_data('_company_address', sanitize_text_field(wp_unslash($_POST['company_address'] ?? ''))); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$order->update_meta_data('_vat_number', sanitize_text_field(wp_unslash($_POST['vat_number'] ?? ''))); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 			$order->save();
 		}
 	}
@@ -542,7 +566,7 @@ class solo_woocommerce {
 		$oib = $order->get_meta('_vat_number');
 		$is_block_checkout = $order->get_meta('_wc_other/solo-for-woocommerce/company_name') !== '';
 		if ($naziv_tvrtke && !$is_block_checkout) {
-			echo '<p><strong>' . __('Podaci za R1 račun', 'solo-for-woocommerce') . ':</strong><br>' . esc_html($naziv_tvrtke) . '<br>' . esc_html($adresa_tvrtke) . '<br>' . esc_html($oib) . '</p>';
+			echo '<p><strong>' . esc_html__('Podaci za R1 račun', 'solo-for-woocommerce') . ':</strong><br>' . esc_html($naziv_tvrtke) . '<br>' . esc_html($adresa_tvrtke) . '<br>' . esc_html($oib) . '</p>';
 		}
 	}
 
@@ -560,7 +584,7 @@ class solo_woocommerce {
 
 	//// Add "Pošalji u Solo" to WooCommerce order actions dropdown
 	public function solo_woocommerce_add_order_action($actions) {
-		$actions['solo_send'] = __('Pošalji u Solo', 'solo-for-woocommerce');
+		$actions['solo_send'] = esc_html__('Pošalji u Solo', 'solo-for-woocommerce');
 		return $actions;
 	}
 
@@ -580,7 +604,7 @@ class solo_woocommerce {
 		$oib = $order->get_meta('_vat_number');
 		$is_block_checkout = $order->get_meta('_wc_other/solo-for-woocommerce/company_name') !== '';
 		if ($naziv_tvrtke && !$is_block_checkout) {
-			echo '<h2 class="woocommerce-column__title">' . __('Podaci za R1 račun', 'solo-for-woocommerce') . '</h2>';
+			echo '<h2 class="woocommerce-column__title">' . esc_html__('Podaci za R1 račun', 'solo-for-woocommerce') . '</h2>';
 			echo '<p>' . esc_html($naziv_tvrtke) . '<br>' . esc_html($adresa_tvrtke) . '<br>' . esc_html($oib) . '</p>';
 		}
 	}
@@ -588,14 +612,14 @@ class solo_woocommerce {
 	//// Create settings link in plugins
 	public function solo_woocommerce_settings_link($links) {
 		$url = esc_url(add_query_arg('page', $this->plugin_name, get_admin_url() . 'admin.php'));
-		$settings_link = '<a href="' . $url . '">' . __('Postavke', 'solo-for-woocommerce') . '</a>';
+		$settings_link = '<a href="' . $url . '">' . esc_html__('Postavke', 'solo-for-woocommerce') . '</a>';
 		array_unshift($links, $settings_link);
 		return $links;
 	}
 
 	//// Create settings link under WooCommerce menu
 	public function solo_woocommerce_submenu_link() {
-		add_submenu_page('woocommerce', 'Solo for WooCommerce', __('Solo postavke', 'solo-for-woocommerce'), 'manage_options', $this->plugin_name, array($this, 'solo_woocommerce_settings_url'));
+		add_submenu_page('woocommerce', 'Solo for WooCommerce', esc_html__('Solo postavke', 'solo-for-woocommerce'), 'manage_options', $this->plugin_name, array($this, 'solo_woocommerce_settings_url'));
 	}
 
 	//// Settings file location
@@ -607,7 +631,7 @@ class solo_woocommerce {
 	public function solo_woocommerce_css_js() {
 		$screen = get_current_screen();
 		$allowed_screens = array(
-			'woocommerce_page_solo-woocommerce',
+			'woocommerce_page_' . $this->plugin_name,
 			'shop_order',
 			'woocommerce_page_wc-orders',
 			'product',
@@ -615,13 +639,13 @@ class solo_woocommerce {
 		if (!$screen || !in_array($screen->id, $allowed_screens)) return;
 
 		wp_enqueue_style($this->plugin_name, plugin_dir_url(__FILE__) . 'lib/' . $this->plugin_name . '.css', false, SOLO_VERSION);
-		wp_enqueue_script($this->plugin_name, plugin_dir_url(__FILE__) . 'lib/' . $this->plugin_name . '.js', array('jquery'), SOLO_VERSION);
-		wp_localize_script($this->plugin_name, 'ajax_object', array(
+		wp_enqueue_script($this->plugin_name, plugin_dir_url(__FILE__) . 'lib/' . $this->plugin_name . '.js', array('jquery'), SOLO_VERSION, true);
+		wp_localize_script($this->plugin_name, 'solo_woocommerce_ajax_object', array(
 			'ajax_url' => admin_url('admin-ajax.php'),
-			'nonce' => wp_create_nonce('solo_check_token_nonce'),
-			'retry_nonce' => wp_create_nonce('solo_retry_order_nonce')
+			'nonce' => wp_create_nonce('solo_woocommerce_check_token_nonce'),
+			'retry_nonce' => wp_create_nonce('solo_woocommerce_retry_order_nonce')
 		));
-		wp_localize_script($this->plugin_name, 'kpd_url', plugin_dir_url(__FILE__) . 'lib/kpd.json');
+		wp_localize_script($this->plugin_name, 'kpd_url', array('url' => plugin_dir_url(__FILE__) . 'lib/kpd.json'));
 	}
 
 	//// Return single setting
@@ -636,21 +660,21 @@ class solo_woocommerce {
 		if (is_plugin_active('woo-solo-api/woo-solo-api.php')) {
 			deactivate_plugins(__FILE__);
 			// Show custom notice
-			add_settings_error('solo_woocommerce_postavke', 'plugin_conflict', __('Solo for WooCommerce je automatski deaktiviran zbog Woo Solo Api dodatka.', 'solo-for-woocommerce'), 'error');
+			add_settings_error('solo_woocommerce_postavke', 'plugin_conflict', esc_html__('Solo for WooCommerce je automatski deaktiviran zbog Woo Solo Api dodatka.', 'solo-for-woocommerce'), 'error');
 		}
 
 		// Update plugin
 		if (isset($_GET['update'])) {
 			// Capability check first, then nonce
 			if (!current_user_can('update_plugins')) {
-				wp_die(__('Nemaš dozvolu za ažuriranje dodataka.', 'solo-for-woocommerce'));
+				wp_die(esc_html__('Nemaš dozvolu za ažuriranje dodataka.', 'solo-for-woocommerce'));
 			}
 			if (check_admin_referer('solo_woocommerce_update_nonce')) {
 				// Prepare update file to download
-				$url = get_transient('solo_url');
+				$url = get_transient('solo_woocommerce_url');
 				$temp_file = download_url($url);
 				if (is_wp_error($temp_file)) {
-					wp_die($temp_file->get_error_message());
+					wp_die(esc_html($temp_file->get_error_message()));
 				}
 
 				// Deactivate plugin
@@ -666,11 +690,11 @@ class solo_woocommerce {
 				$folder = WP_PLUGIN_DIR;
 				$result = unzip_file($temp_file, $folder);
 				if (is_wp_error($result)) {
-					wp_die($result->get_error_message());
+					wp_die(esc_html($result->get_error_message()));
 				}
 
 				// Delete temporary file
-				unlink($temp_file);
+				wp_delete_file($temp_file);
 
 				// Activate plugin
 				activate_plugins(__FILE__);
@@ -679,7 +703,7 @@ class solo_woocommerce {
 				solo_woocommerce_inform('update');
 
 				// Show custom notice
-				add_settings_error('solo_woocommerce_postavke', 'solo_woocommerce_postavke', __('Dodatak uspješno ažuriran.', 'solo-for-woocommerce'), 'updated');
+				add_settings_error('solo_woocommerce_postavke', 'solo_woocommerce_postavke', esc_html__('Dodatak uspješno ažuriran.', 'solo-for-woocommerce'), 'updated');
 			}
 		}
 
@@ -695,13 +719,13 @@ class solo_woocommerce {
 
 		// Validate fields
 		if ($data) {
-			$message = __('Postavke uspješno spremljene.', 'solo-for-woocommerce');
+			$message = esc_html__('Postavke uspješno spremljene.', 'solo-for-woocommerce');
 			$type = 'updated';
 
 			foreach($data as $key => $value) {
 				// API token validation
 				if ($key=='token' && !preg_match('/^[a-zA-Z0-9]{33}$/', $data[$key])) {
-					$message = __('API token nije ispravan.', 'solo-for-woocommerce');
+					$message = esc_html__('API token nije ispravan.', 'solo-for-woocommerce');
 					$type = 'error';
 					$settings_data = '';
 
@@ -732,11 +756,11 @@ class solo_woocommerce {
 
 	//// Ajax token check
 	function solo_woocommerce_check_token() {
-		check_ajax_referer('solo_check_token_nonce', 'nonce');
+		check_ajax_referer('solo_woocommerce_check_token_nonce', 'nonce');
 		if (!current_user_can('manage_options')) wp_die(-1);
 
-		$token = sanitize_text_field($_REQUEST['token']);
-		$url = wp_remote_get('https://api.solo.com.hr/licenca?token=' . urlencode($token));
+		$token = sanitize_text_field(wp_unslash($_REQUEST['token'] ?? ''));
+		$url = wp_remote_get(SOLO_API_URL . 'licenca?token=' . urlencode($token));
 
 		if (is_wp_error($url)) {
 			$response = wp_remote_retrieve_response_code($url) . ': ' . wp_remote_retrieve_response_message($url);
@@ -744,24 +768,25 @@ class solo_woocommerce {
 			$response = wp_remote_retrieve_body($url);
 		}
 
-		echo $response;
+		echo $response; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		wp_die();
 	}
 
 	//// Ajax retry order
 	function solo_woocommerce_retry_order() {
-		check_ajax_referer('solo_retry_order_nonce', 'nonce');
+		check_ajax_referer('solo_woocommerce_retry_order_nonce', 'nonce');
 		if (!current_user_can('manage_options')) wp_die(-1);
 
-		$order_id = intval($_POST['order_id']);
+		$order_id = intval(isset($_POST['order_id']) ? $_POST['order_id'] : 0);
 		if (!$order_id) wp_send_json_error('Invalid order ID');
 
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'solo_woocommerce';
 
 		// Read original request from DB
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
 		$row = $wpdb->get_row($wpdb->prepare(
-			"SELECT * FROM $table_name WHERE order_id = %d",
+			"SELECT * FROM {$table_name} WHERE order_id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$order_id
 		));
 
@@ -793,6 +818,7 @@ class solo_woocommerce {
 		$api_response_body = wp_remote_retrieve_body($api_response);
 
 		// Update DB row
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->update(
 			$table_name,
 			array(
@@ -812,7 +838,7 @@ class solo_woocommerce {
 			wp_schedule_single_event(time() + 5, 'solo_woocommerce_api_get', array($pdf, $order_id, $document_type));
 			wp_send_json_success($api_response_body);
 		} elseif ($status == 100) {
-			wp_send_json_error(__('Pričekaj barem 10 sekundi prije slanja novog zahtjeva.', 'solo-for-woocommerce'));
+			wp_send_json_error(esc_html__('Pričekaj barem 10 sekundi prije slanja novog zahtjeva.', 'solo-for-woocommerce'));
 		} else {
 			wp_send_json_error($api_response_body);
 		}
@@ -849,7 +875,7 @@ class solo_woocommerce {
 		$is_r1 = !empty($naziv_tvrtke) && !empty($adresa_tvrtke) && !empty($oib);
 		if (!$is_r1) return 1;
 
-		$eu_countries = array('AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK', 'HR');
+		$eu_countries = array('AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK');
 
 		if ($country === 'HR') return 2;
 		if (in_array($country, $eu_countries)) return 4;
@@ -932,7 +958,7 @@ class solo_woocommerce {
 
 				$payload .= '&usluga=' . $i . PHP_EOL;
 				if (!empty($kpd) && $tip_kupca == 2) $payload .= '&kpd_' . $i . '=' . urlencode($kpd) . PHP_EOL;
-				$payload .= '&opis_usluge_' . $i . '=' . urlencode(__('Kupon za popust', 'solo-for-woocommerce') . ' (' . $coupon_code . ')') . PHP_EOL;
+				$payload .= '&opis_usluge_' . $i . '=' . urlencode(esc_html__('Kupon za popust', 'solo-for-woocommerce') . ' (' . $coupon_code . ')') . PHP_EOL;
 				$payload .= '&jed_mjera_' . $i . '=1' . PHP_EOL;
 				$payload .= '&cijena_' . $i . '=' . $coupon_price . PHP_EOL;
 				$payload .= '&kolicina_' . $i . '=1' . PHP_EOL;
@@ -974,7 +1000,7 @@ class solo_woocommerce {
 
 			$payload .= '&usluga=' . $i . PHP_EOL;
 			if ($tip_kupca == 2) $payload .= '&kpd_' . $i . '=' . urlencode('53.20.09') . PHP_EOL;
-			$payload .= '&opis_usluge_' . $i . '=' . urlencode(__('Poštarina', 'solo-for-woocommerce')) . PHP_EOL;
+			$payload .= '&opis_usluge_' . $i . '=' . urlencode(esc_html__('Poštarina', 'solo-for-woocommerce')) . PHP_EOL;
 			$payload .= '&jed_mjera_' . $i . '=1' . PHP_EOL;
 			$payload .= '&cijena_' . $i . '=' . $shipping_price . PHP_EOL;
 			$payload .= '&kolicina_' . $i . '=1' . PHP_EOL;
@@ -1008,7 +1034,7 @@ class solo_woocommerce {
 		$currency_id = $accepted_currencies[$currency];
 		$payload = '&valuta_' . $grammar . '=' . $currency_id . PHP_EOL;
 		$payload .= '&tecaj=' . $currency_exchange . PHP_EOL;
-		$payload .= '&napomene=' . urlencode(__('Preračunato po srednjem tečaju HNB-a', 'solo-for-woocommerce') . ' (1 EUR = ' . $currency_exchange . ' ' . $currency . ')') . PHP_EOL;
+		$payload .= '&napomene=' . urlencode(esc_html__('Preračunato po srednjem tečaju HNB-a', 'solo-for-woocommerce') . ' (1 EUR = ' . $currency_exchange . ' ' . $currency . ')') . PHP_EOL;
 
 		return array('payload' => $payload, 'valid' => true);
 	}
@@ -1041,7 +1067,8 @@ class solo_woocommerce {
 		// Check if order already exists
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'solo_woocommerce';
-		$exists = $wpdb->get_var($wpdb->prepare("SELECT order_id FROM $table_name WHERE order_id = %d", $order_id));
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
+		$exists = $wpdb->get_var($wpdb->prepare("SELECT order_id FROM {$table_name} WHERE order_id = %d", $order_id));
 
 		// Proceed on "checkout" or "completed"
 		$is_checkout = ($old_status == 'pending' && in_array($new_status, ['on-hold', 'processing']) && $trigger == 1 && !$exists);
@@ -1079,13 +1106,17 @@ class solo_woocommerce {
 			'mollie_wc_gateway_paypal' => 1,
 			'klarna_payments' => 3,
 			'kco' => 3,
+			'worldline-hosted-tokenization' => 3,
+			'worldline-apple-pay' => 3,
+			'worldline-google-pay' => 3,
+			'raiaccept' => 3,
 		);
 
 		if (!isset($payment_map[$payment_method])) return;
 		$nacin_placanja = $payment_map[$payment_method];
 
 		$grammar = $document_type === 'racun' ? 'racuna' : 'ponude';
-		$url = 'https://api.solo.com.hr/' . $document_type;
+		$url = SOLO_API_URL . $document_type;
 		$customer = $this->build_customer_data($order);
 
 		// Build API request
@@ -1118,6 +1149,7 @@ class solo_woocommerce {
 
 		// Ensure table exists (cached check to avoid SHOW TABLES on every order)
 		if (!get_transient('solo_woocommerce_table_exists')) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
 				solo_woocommerce_create_table();
 			} else {
@@ -1126,6 +1158,7 @@ class solo_woocommerce {
 		}
 
 		// Save order to database
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 		$wpdb->insert(
 			$table_name,
 			array(
@@ -1147,14 +1180,14 @@ class solo_woocommerce {
 		echo '<p class="form-field">';
 		echo '<label for="kpd">' . esc_html__('KPD oznaka', 'solo-for-woocommerce') . '</label>';
 		echo '<input type="text" id="kpd" name="kpd" value="' . esc_attr($kpd) . '" placeholder="npr. 47.71.00" maxlength="8" class="short" autocomplete="off" />';
-		echo wc_help_tip(__('Ostavi prazno ako želiš koristiti samo zadanu KPD oznaku iz Postavki.', 'solo-for-woocommerce'));
+		echo wc_help_tip(esc_html__('Ostavi prazno ako želiš koristiti samo zadanu KPD oznaku iz Postavki.', 'solo-for-woocommerce')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '</p>';
 		echo '</div>';
 	}
 
 	//// Product edit page: save KPD oznaka
 	public function solo_woocommerce_save_product_kpd($post_id) {
-		$kpd = isset($_POST['kpd']) ? sanitize_text_field($_POST['kpd']) : '';
+		$kpd = isset($_POST['kpd']) ? sanitize_text_field(wp_unslash($_POST['kpd'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		if (preg_match('/^\d{2}\.\d{2}\.\d{2}$/', $kpd) || $kpd === '') {
 			update_post_meta($post_id, '_solo_kpd', $kpd);
 		}

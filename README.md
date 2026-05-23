@@ -48,6 +48,8 @@ Dodatak automatski prepoznaje načine plaćanja u WooCommerce (ako su dostupni/o
 - [Viva](https://wordpress.org/plugins/viva-com-smart-for-woocommerce/)
 - [Mollie](https://wordpress.org/plugins/mollie-payments-for-woocommerce/)
 - [Klarna](https://wordpress.org/plugins/klarna-payments-for-woocommerce/)
+- [Wordline](https://wordpress.org/plugins/worldline-for-woocommerce/)
+- [Raiffeisen Payment Gateway](https://wordpress.org/plugins/raiffeisen-payment-gateway/)
 
 Pri kreiranju dokumenta u Solo, dodatak će automatski poslati informacije o načinu plaćanja i Solo će sam odlučiti treba li fiskalizirati račun. Ovaj dodatak ne šalje eRačune.
 
@@ -62,7 +64,7 @@ https://github.com/user-attachments/assets/f8a9b340-718c-4559-b970-83fe213d4310
 ### Podrška:
 Ovaj dodatak je u razvojnoj fazi i moguće su greške pri korištenju. To je normalno za očekivati jer ne postoji idealan scenarij u moru WordPress instalacija i dodataka (pluginova). Na besprijekoran rad ovog dodatka mogu utjecati drugi dodaci koje imaš instalirane.
 
-Za tehničku podršku molimo te da koristiš [GitHub Issues](https://github.com/coax/solo-for-woocommerce/issues). Slobodno nam piši na hrvatskom jeziku.
+Za tehničku podršku molimo te da koristiš opciju [Kontaktiraj podršku](https://solo.com.hr/podrska) izravno iz servisa Solo ili [GitHub Issues](https://github.com/coax/solo-for-woocommerce/issues). Slobodno nam piši na hrvatskom jeziku.
 
 ### Daljnji razvoj:
 Solo je kreirao dodatak s idejom jednostavnosti korištenja i izbacivanjem nepotrebnih opcija. Bugove ćemo potamaniti u što kraćem roku (ako ih prijaviš), a slobodno baci pogled na izvorni kod i uključi se s optimizacijama i doradama za koje misliš da bi bile korisne svima.

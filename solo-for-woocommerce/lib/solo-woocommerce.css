@@ -3,7 +3,7 @@ div.solo-logo {display:inline-block; vertical-align:-50%; margin-right:10px; wid
 sup.tooltip {position:absolute; right:0; top:25%; width:13px; height:13px; line-height:12px; vertical-align:0; cursor:help;}
 sup.tooltip:after {content:'?'; position:absolute; top:0; left:0; width:100%; height:100%; color:#fff; background:#666; border-radius:50%; font-weight:600; text-align:center; font-size:10px;}
 .jBox-container {padding:12px; font-size:11px; background:#333; color:#fff; border-radius:4px; max-width:200px; line-height:1.3;}
-.spinner {float:none;}
+#wpbody-content .spinner {float:none; margin:0;}
 table#arhiva thead th {overflow:hidden; text-overflow:ellipsis;}
 table#arhiva tbody tr.shrink p {position:relative; height:75px; overflow:hidden; cursor:pointer;}
 .fancySearchRow input[type=search] {padding:0 8px;}
