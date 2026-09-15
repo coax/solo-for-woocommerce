@@ -3,9 +3,9 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 2.4
- * Requires at least: 5.2
- * Tested up to: 7.0
+ * Version: 2.5
+ * Requires at least: 5.3
+ * Tested up to: 7.1
  * Requires PHP: 7.2
  * Requires Plugins: woocommerce
  * Author: Solo
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 }
 
 //// Variables
-define('SOLO_VERSION', '2.4');
+define('SOLO_VERSION', '2.5');
 define('SOLO_API_URL', 'https://api.solo.com.hr/');
 
 //// Activate plugin
@@ -291,8 +291,14 @@ function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 	// Init main class and get setting
 	$solo_woocommerce = new solo_woocommerce;
 	$send = $solo_woocommerce->setting('posalji');
-	$title = $solo_woocommerce->setting('naslov');
-	$body = $solo_woocommerce->setting('poruka');
+
+	// Pick title/body per document type, falling back to old shared fields for backwards compatibility
+	$title_key = $document_type === 'racun' ? 'naslov_racun' : 'naslov_ponuda';
+	$body_key = $document_type === 'racun' ? 'poruka_racun' : 'poruka_ponuda';
+	$title = $solo_woocommerce->setting($title_key);
+	$body = $solo_woocommerce->setting($body_key);
+	if (empty($title)) $title = $solo_woocommerce->setting('naslov');
+	if (empty($body)) $body = $solo_woocommerce->setting('poruka');
 
 	// Proceed if enabled in settings
 	if ($send == '1') {
@@ -331,8 +337,7 @@ function solo_woocommerce_api_get($pdf, $order_id, $document_type) {
 		$wp_filesystem->put_contents($local_file, wp_remote_retrieve_body($remote_file), FS_CHMOD_FILE);
 
 		// Send e-mail with PDF in attachment
-		$headers = '';
-		$sent = wp_mail($billing_email, $title, $body, $headers, array($local_file));
+		$sent = wp_mail($billing_email, $title, $body, '', array($local_file));
 
 		if ($sent) {
 			// Save sent date
@@ -435,6 +440,13 @@ class solo_woocommerce {
 
 	//// Show notices
 	function solo_woocommerce_show_messages() {
+		$user_id = get_current_user_id();
+		$notice = get_transient('solo_woocommerce_manual_send_notice_' . $user_id);
+		if ($notice) {
+			delete_transient('solo_woocommerce_manual_send_notice_' . $user_id);
+			echo '<div class="notice notice-' . esc_attr($notice['type']) . ' is-dismissible"><p>' . wp_kses_post($notice['message']) . '</p></div>';
+		}
+
 		settings_errors();
 	}
 
@@ -479,6 +491,14 @@ class solo_woocommerce {
 			'type' => 'text',
 			'required' => false,
 		));
+
+		wp_register_script($this->plugin_name . '-checkout', false, array(), SOLO_VERSION, true);
+		wp_enqueue_script($this->plugin_name . '-checkout');
+		wp_add_inline_script($this->plugin_name . '-checkout', 'jQuery(function($){$("#contact-solo-for-woocommerce-r1").on("click",function(){if($(this).is(":checked")){$(".wc-block-components-address-form__solo-for-woocommerce-company_name,.wc-block-components-address-form__solo-for-woocommerce-company_address,.wc-block-components-address-form__solo-for-woocommerce-vat_number").removeClass("hidden");$(".wc-block-components-address-form__solo-for-woocommerce-company_name").focus();}else{$(".wc-block-components-address-form__solo-for-woocommerce-company_name,.wc-block-components-address-form__solo-for-woocommerce-company_address,.wc-block-components-address-form__solo-for-woocommerce-vat_number").addClass("hidden");}});});');
+
+		wp_register_style($this->plugin_name . '-checkout', false, array(), SOLO_VERSION);
+		wp_enqueue_style($this->plugin_name . '-checkout');
+		wp_add_inline_style($this->plugin_name . '-checkout', '#contact .hidden{display:none;}');
 	}
 
 	//// Save blocks checkout fields to order meta
@@ -537,11 +557,11 @@ class solo_woocommerce {
 		);
 		echo '</div>';
 
-		wp_register_script($this->plugin_name . '-checkout', false);
+		wp_register_script($this->plugin_name . '-checkout', false, array(), SOLO_VERSION, true);
 		wp_enqueue_script($this->plugin_name . '-checkout');
 		wp_add_inline_script($this->plugin_name . '-checkout', 'jQuery(function($){$("#vat_number [type=checkbox]").on("click",function(){if($(this).is(":checked")){$("#company_name_field,#company_address_field,#vat_number_field").removeClass("hidden");$("#company_name").focus();}else{$("#company_name_field,#company_address_field,#vat_number_field").addClass("hidden");}});});');
 
-		wp_register_style($this->plugin_name . '-checkout', false);
+		wp_register_style($this->plugin_name . '-checkout', false, array(), SOLO_VERSION);
 		wp_enqueue_style($this->plugin_name . '-checkout');
 		wp_add_inline_style($this->plugin_name . '-checkout', '#vat_number .hidden{display:none;}');
 	}
@@ -585,16 +605,51 @@ class solo_woocommerce {
 
 	//// Add "Pošalji u Solo" to WooCommerce order actions dropdown
 	public function solo_woocommerce_add_order_action($actions) {
-		$actions['solo_send'] = esc_html__('Pošalji u Solo', 'solo-for-woocommerce');
+		$actions['solo_send'] = __('Pošalji u Solo', 'solo-for-woocommerce');
 		return $actions;
 	}
 
 	//// Handle manual send from order actions dropdown
 	public function solo_woocommerce_manual_send($order) {
 		$order_id = $order->get_id();
-		$old_status = 'pending';
-		$new_status = $order->get_status();
-		$this->solo_woocommerce_process_order($order_id, $old_status, $new_status);
+		$user_id = get_current_user_id();
+		$arhiva_url = '<a href="' . esc_url(admin_url('admin.php?page=solo-woocommerce&tab=arhiva')) . '" target="_blank">' . esc_html__('Arhivi', 'solo-for-woocommerce') . '</a>';
+
+		if ($this->order_exists_in_archive($order_id)) {
+			set_transient('solo_woocommerce_manual_send_notice_' . $user_id, array(
+				'type' => 'warning',
+				// translators: %s is a link to the Arhiva tab
+				'message' => sprintf(esc_html__('Ova narudžba već postoji u %s. Ako nije kreiran dokument u Solo, pokušaj ponoviti neuspjeli zahtjev izravno iz Arhive.', 'solo-for-woocommerce'), $arhiva_url)
+			), 60);
+			return;
+		}
+
+		$settings = get_option('solo_woocommerce_postavke');
+		$payment_method = $order->get_payment_method();
+		$document_type = $settings[$payment_method . '1'] ?? '';
+		$akcije_url = '<a href="' . esc_url(admin_url('admin.php?page=solo-woocommerce&tab=akcije')) . '" target="_blank">' . esc_html__('načina plaćanja i/ili akcije', 'solo-for-woocommerce') . '</a>';
+
+		if (empty($document_type)) {
+			set_transient('solo_woocommerce_manual_send_notice_' . $user_id, array(
+				'type' => 'error',
+				// translators: %s is a link to the Načini plaćanja i akcije tab
+				'message' => sprintf(esc_html__('Ova narudžba ne može biti poslana u Solo jer nema odgovarajućeg %s.', 'solo-for-woocommerce'), $akcije_url)
+			), 60);
+			return;
+		}
+
+		$payment_map = $this->get_payment_map();
+		$url = SOLO_API_URL . $document_type;
+		$built = $this->build_api_request($order, $document_type, $settings, $payment_map[$payment_method] ?? 1);
+		if (!$built['valid']) return;
+
+		$this->save_to_archive_and_send($url, $built['request'], $order_id, $document_type);
+
+		set_transient('solo_woocommerce_manual_send_notice_' . $user_id, array(
+			'type' => 'success',
+			// translators: %s is a link to the Arhiva tab
+			'message' => sprintf(esc_html__('Ova narudžba je uspješno poslana u Solo. Provjeri u %s.', 'solo-for-woocommerce'), $arhiva_url)
+		), 60);
 	}
 
 	//// Show custom fields to customer
@@ -657,6 +712,24 @@ class solo_woocommerce {
 
 	//// Plugin settings (or update plugin)
 	function solo_woocommerce_settings() {
+		// Purge all plugin data
+		if (isset($_GET['purge']) && current_user_can('manage_options') && check_admin_referer('solo_woocommerce_purge_nonce')) {
+			// Tables
+			global $wpdb;
+			$table_name = esc_sql($wpdb->prefix . 'solo_woocommerce');
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+			$wpdb->query("DROP TABLE IF EXISTS `{$table_name}`");
+			// Options
+			delete_option('solo_woocommerce_postavke');
+			delete_option('solo_woocommerce_tecaj');
+			// Transients
+			delete_transient('solo_woocommerce_tag');
+			delete_transient('solo_woocommerce_url');
+			delete_transient('solo_woocommerce_table_exists');
+			wp_safe_redirect(admin_url('admin.php?page=' . $this->plugin_name));
+			exit;
+		}
+
 		// Deactivate if another plugin is active
 		if (is_plugin_active('woo-solo-api/woo-solo-api.php')) {
 			deactivate_plugins(__FILE__);
@@ -872,6 +945,7 @@ class solo_woocommerce {
 		);
 	}
 
+	//// Determine tip_kupca based on country and R1 data
 	private function resolve_tip_kupca($country, $naziv_tvrtke, $adresa_tvrtke, $oib) {
 		$is_r1 = !empty($naziv_tvrtke) && !empty($adresa_tvrtke) && !empty($oib);
 		if (!$is_r1) return 1;
@@ -1040,44 +1114,89 @@ class solo_woocommerce {
 		return array('payload' => $payload, 'valid' => true);
 	}
 
-	//// Process order before sending to Solo API
-	function solo_woocommerce_process_order($order_id, $old_status, $new_status) {
-		$order = wc_get_order($order_id);
-		if (!$order) return;
-		$payment_method = $order->get_payment_method();
+	//// Check if order already exists in the archive table
+	private function order_exists_in_archive($order_id) {
+		global $wpdb;
+		$table_name = esc_sql($wpdb->prefix . 'solo_woocommerce');
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return $wpdb->get_var($wpdb->prepare("SELECT order_id FROM {$table_name} WHERE order_id = %d", $order_id));
+	}
 
-		$settings = get_option('solo_woocommerce_postavke');
-		$document_type = $trigger = '';
-		if (!empty($settings)) {
-			$token = $settings['token'] ?? '';
-			$tip_usluge = isset($settings['tip_usluge']) && is_numeric($settings['tip_usluge']) ? $settings['tip_usluge'] : 1;
-			$prikazi_porez = $settings['prikazi_porez'] ?? 0;
-			$tip_racuna = !empty($settings['tip_racuna']) ? $settings['tip_racuna'] : 1;
-			$rok_placanja = $settings['rok_placanja'] ?? '';
-			$iban = $settings['iban'] ?? '';
-			$jezik_ = $settings['jezik_'] ?? '';
-			$napomene_racun = $settings['napomene_racun'] ?? '';
-			$napomene_ponuda = $settings['napomene_ponuda'] ?? '';
-			$kpd = $settings['kpd'] ?? '';
-			$document_type = $settings[$payment_method . '1'] ?? '';
-			$trigger = $settings[$payment_method . '2'] ?? '';
-		}
+	//// Build the Solo API request body for an order
+	private function build_api_request($order, $document_type, $settings, $nacin_placanja) {
+		$token = $settings['token'] ?? '';
+		$tip_usluge = isset($settings['tip_usluge']) && is_numeric($settings['tip_usluge']) ? $settings['tip_usluge'] : 1;
+		$prikazi_porez = $settings['prikazi_porez'] ?? 0;
+		$tip_racuna = !empty($settings['tip_racuna']) ? $settings['tip_racuna'] : 1;
+		$rok_placanja = $settings['rok_placanja'] ?? '';
+		$iban = $settings['iban'] ?? '';
+		$jezik_ = $settings['jezik_'] ?? '';
+		$napomene_racun = $settings['napomene_racun'] ?? '';
+		$napomene_ponuda = $settings['napomene_ponuda'] ?? '';
+		$kpd = $settings['kpd'] ?? '';
 
-		if ($document_type === '' || $trigger === '') return;
+		$grammar = $document_type === 'racun' ? 'racuna' : 'ponude';
+		$customer = $this->build_customer_data($order);
 
-		// Check if order already exists
+		$i = 0;
+		$api_request = 'token=' . $token . PHP_EOL;
+		$api_request .= '&tip_usluge=' . $tip_usluge . PHP_EOL;
+		$api_request .= '&tip_kupca=' . $customer['tip_kupca'] . PHP_EOL;
+		$api_request .= '&prikazi_porez=' . $prikazi_porez . PHP_EOL;
+		$api_request .= '&tip_racuna=' . $tip_racuna . PHP_EOL;
+		$api_request .= '&kupac_naziv=' . urlencode($customer['naziv']) . PHP_EOL;
+		$api_request .= '&kupac_adresa=' . urlencode($customer['adresa']) . PHP_EOL;
+		$api_request .= '&kupac_oib=' . urlencode($customer['oib']) . PHP_EOL;
+		$api_request .= $this->build_items_payload($order, $i, $kpd, $customer['tip_kupca']);
+		$api_request .= $this->build_extras_payload($order, $i, $kpd, $customer['tip_kupca']);
+		$api_request .= '&nacin_placanja=' . $nacin_placanja . PHP_EOL;
+		if (!empty($rok_placanja)) $api_request .= '&rok_placanja=' . $rok_placanja . PHP_EOL;
+		if (!empty($iban)) $api_request .= '&iban=' . $iban . PHP_EOL;
+
+		$currency_data = $this->resolve_currency($order->get_currency(), $grammar);
+		if (!$currency_data['valid']) return array('valid' => false);
+		$api_request .= $currency_data['payload'];
+
+		$napomene = $document_type === 'racun' ? $napomene_racun : $napomene_ponuda;
+		if (!empty($napomene)) $api_request .= '&napomene=' . urlencode($napomene) . PHP_EOL;
+		if (!empty($jezik_)) $api_request .= '&jezik_' . $grammar . '=' . $jezik_ . PHP_EOL;
+
+		return array('valid' => true, 'request' => $api_request);
+	}
+
+	//// Save order to archive table and send to Solo API
+	private function save_to_archive_and_send($url, $api_request, $order_id, $document_type) {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'solo_woocommerce';
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
-		$exists = $wpdb->get_var($wpdb->prepare("SELECT order_id FROM {$table_name} WHERE order_id = %d", $order_id));
 
-		// Proceed on "checkout" or "completed"
-		$is_checkout = ($old_status == 'pending' && in_array($new_status, ['on-hold', 'processing']) && $trigger == 1 && !$exists);
-		$is_completed = ($old_status != $new_status && $new_status == 'completed' && $trigger == 2 && !$exists);
-		if (!$is_checkout && !$is_completed) return;
+		// Ensure table exists (cached check to avoid SHOW TABLES on every order)
+		if (!get_transient('solo_woocommerce_table_exists')) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
+				solo_woocommerce_create_table();
+			} else {
+				set_transient('solo_woocommerce_table_exists', 1, DAY_IN_SECONDS);
+			}
+		}
 
-		// Payment method mapping
-		$payment_map = array(
+		// Save order to database
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		$wpdb->insert(
+			$table_name,
+			array(
+				'order_id' => $order_id,
+				'api_request' => 'POST ' . $url . PHP_EOL . $api_request,
+				'created' => current_time('mysql')
+			)
+		);
+
+		// Send to Solo API
+		solo_woocommerce_api_post($url, str_replace(PHP_EOL, '', $api_request), $order_id, $document_type);
+	}
+
+	//// Shared payment method to nacin_placanja mapping
+	private function get_payment_map() {
+		return array(
 			'bacs' => 1,
 			'cod' => 1,
 			'stripe' => 3,
@@ -1112,65 +1231,39 @@ class solo_woocommerce {
 			'worldline-google-pay' => 3,
 			'raiaccept' => 3,
 		);
+	}
 
-		if (!isset($payment_map[$payment_method])) return;
-		$nacin_placanja = $payment_map[$payment_method];
+	//// Process order before sending to Solo API
+	function solo_woocommerce_process_order($order_id, $old_status, $new_status) {
+		$order = wc_get_order($order_id);
+		if (!$order) return;
+		$payment_method = $order->get_payment_method();
 
-		$grammar = $document_type === 'racun' ? 'racuna' : 'ponude';
-		$url = SOLO_API_URL . $document_type;
-		$customer = $this->build_customer_data($order);
-
-		// Build API request
-		$i = 0;
-		$api_request = 'token=' . $token . PHP_EOL;
-		$api_request .= '&tip_usluge=' . $tip_usluge . PHP_EOL;
-		$api_request .= '&tip_kupca=' . $customer['tip_kupca'] . PHP_EOL;
-		$api_request .= '&prikazi_porez=' . $prikazi_porez . PHP_EOL;
-		$api_request .= '&tip_racuna=' . $tip_racuna . PHP_EOL;
-		$api_request .= '&kupac_naziv=' . urlencode($customer['naziv']) . PHP_EOL;
-		$api_request .= '&kupac_adresa=' . urlencode($customer['adresa']) . PHP_EOL;
-		$api_request .= '&kupac_oib=' . urlencode($customer['oib']) . PHP_EOL;
-		$api_request .= $this->build_items_payload($order, $i, $kpd, $customer['tip_kupca']);
-		$api_request .= $this->build_extras_payload($order, $i, $kpd, $customer['tip_kupca']);
-		$api_request .= '&nacin_placanja=' . $nacin_placanja . PHP_EOL;
-		if (!empty($rok_placanja)) $api_request .= '&rok_placanja=' . $rok_placanja . PHP_EOL;
-		if (!empty($iban)) $api_request .= '&iban=' . $iban . PHP_EOL;
-
-		// Currency
-		$currency_data = $this->resolve_currency($order->get_currency(), $grammar);
-		if (!$currency_data['valid']) return;
-		$api_request .= $currency_data['payload'];
-
-		// Notes
-		$napomene = $document_type === 'racun' ? $napomene_racun : $napomene_ponuda;
-		if (!empty($napomene)) $api_request .= '&napomene=' . urlencode($napomene) . PHP_EOL;
-
-		// Language
-		if (!empty($jezik_)) $api_request .= '&jezik_' . $grammar . '=' . $jezik_ . PHP_EOL;
-
-		// Ensure table exists (cached check to avoid SHOW TABLES on every order)
-		if (!get_transient('solo_woocommerce_table_exists')) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
-				solo_woocommerce_create_table();
-			} else {
-				set_transient('solo_woocommerce_table_exists', 1, DAY_IN_SECONDS);
-			}
+		$settings = get_option('solo_woocommerce_postavke');
+		$document_type = $trigger = '';
+		if (!empty($settings)) {
+			$document_type = $settings[$payment_method . '1'] ?? '';
+			$trigger = $settings[$payment_method . '2'] ?? '';
 		}
 
-		// Save order to database
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-		$wpdb->insert(
-			$table_name,
-			array(
-				'order_id' => $order_id,
-				'api_request' => 'POST ' . $url . PHP_EOL . $api_request,
-				'created' => current_time('mysql')
-			)
-		);
+		if ($document_type === '' || $trigger === '') return;
 
-		// Send to Solo API
-		solo_woocommerce_api_post($url, str_replace(PHP_EOL, '', $api_request), $order_id, $document_type);
+		// Check if order already exists
+		$exists = $this->order_exists_in_archive($order_id);
+
+		// Proceed on "checkout" or "completed"
+		$is_checkout = ($old_status == 'pending' && in_array($new_status, ['on-hold', 'processing']) && $trigger == 1 && !$exists);
+		$is_completed = ($old_status != $new_status && $new_status == 'completed' && $trigger == 2 && !$exists);
+		if (!$is_checkout && !$is_completed) return;
+
+		$payment_map = $this->get_payment_map();
+		if (!isset($payment_map[$payment_method])) return;
+
+		$url = SOLO_API_URL . $document_type;
+		$built = $this->build_api_request($order, $document_type, $settings, $payment_map[$payment_method]);
+		if (!$built['valid']) return;
+
+		$this->save_to_archive_and_send($url, $built['request'], $order_id, $document_type);
 	}
 
 	//// Product edit page: KPD oznaka field
@@ -1193,6 +1286,8 @@ class solo_woocommerce {
 			update_post_meta($post_id, '_solo_kpd', $kpd);
 		}
 	}
+
+	//// Products list: show KPD oznaka below SKU
 	public function solo_woocommerce_kpd_column_content($column, $post_id) {
 		if ($column === 'sku') {
 			$kpd = get_post_meta($post_id, '_solo_kpd', true);
@@ -1202,9 +1297,40 @@ class solo_woocommerce {
 		}
 	}
 
+	//// Fetch latest version from GitHub
+	public function solo_woocommerce_fetch_github_version() {
+		$tag = get_transient('solo_woocommerce_tag');
+		if ($tag) return $tag;
+
+		$json = wp_remote_get('https://api.github.com/repos/coax/solo-for-woocommerce/releases',
+			array(
+				'timeout' => 10,
+				'headers' => array(
+					'Accept' => 'application/json'
+				)
+			)
+		);
+		if (!is_wp_error($json)) {
+			$decoded_json = json_decode(wp_remote_retrieve_body($json), true);
+			if (isset($decoded_json[0]['name'])) {
+				$tag = ltrim($decoded_json[0]['name'], 'v');
+				$url = $decoded_json[0]['assets'][0]['browser_download_url'] ?? '';
+				set_transient('solo_woocommerce_tag', $tag, DAY_IN_SECONDS);
+				set_transient('solo_woocommerce_url', $url, DAY_IN_SECONDS);
+			}
+		}
+		return $tag ?: '';
+	}
+
+	//// Render update notice HTML
+	public function solo_woocommerce_update_notice($tag) {
+		echo '<p>' . esc_html__('Dostupna je nova verzija dodatka', 'solo-for-woocommerce') . ': <a href="https://github.com/coax/solo-for-woocommerce/releases/tag/v' . esc_html($tag) . '" target="_blank">Solo for WooCommerce ' . esc_html($tag) . '</a></p>';
+		echo '<p><a href="' . esc_url(wp_nonce_url('admin.php?page=' . $this->plugin_name . '&update=true', 'solo_woocommerce_update_nonce')) . '" class="button button-small button-primary">' . esc_html__('Instaliraj novu verziju', 'solo-for-woocommerce') . '</a></p>';
+	}
+
 	//// WP dashboard update check
 	public function solo_woocommerce_dashboard_widget() {
-		$tag = ltrim(get_transient('solo_woocommerce_tag'), 'v');
+		$tag = ltrim($this->solo_woocommerce_fetch_github_version(), 'v');
 		if (!$tag || !version_compare(SOLO_VERSION, $tag, '<') || !current_user_can('update_plugins')) return;
 		wp_add_dashboard_widget(
 			'solo_woocommerce_widget',
@@ -1215,9 +1341,7 @@ class solo_woocommerce {
 
 	public function solo_woocommerce_dashboard_widget_content() {
 		$tag = ltrim(get_transient('solo_woocommerce_tag'), 'v');
-?>
-<p><?php echo esc_html__('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo esc_html($tag); ?></a></p>
-<p><a href="<?php echo esc_url(wp_nonce_url('admin.php?page=solo-woocommerce&update=true', 'solo_woocommerce_update_nonce')); ?>" class="button button-small button-primary"><?php echo esc_html__('Instaliraj novu verziju', 'solo-for-woocommerce'); ?></a></p><?php
+		$this->solo_woocommerce_update_notice($tag);
 	}
 }
 $solo_woocommerce = new solo_woocommerce;

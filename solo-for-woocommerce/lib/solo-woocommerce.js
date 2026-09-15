@@ -22,7 +22,7 @@ jQuery(document).ready(function($) {
 		sortColumn: 0,
 		sortOrder: 'descending',
 		pagination: true,
-		perPage: 10,
+		perPage: 15,
 		globalSearch: true,
 		inputPlaceholder: 'Upiši traženi pojam...',
 		onUpdate: function() {
@@ -134,20 +134,26 @@ jQuery(document).ready(function($) {
 			},
 			dataType: 'json',
 			success: function(response) {
+				function escapeHtml(str) {
+					return $('<div>').text(str).html();
+				}
 				if (response.success) {
-					callback(true, response.data.replace(/\r\n/g, '<br>'), $spinner);
+					callback(true, escapeHtml(response.data).replace(/\r\n/g, '<br>'), $spinner);
 				} else {
 					$spinner.replaceWith(link);
 					link.text('Pokušaj ponovo');
-					link.after('<p><b>' + response.data.replace(/\r\n/g, '<br>') + '</b></p>');
+					link.after('<p><b>' + escapeHtml(response.data).replace(/\r\n/g, '<br>') + '</b></p>');
 					link.closest('td').find('p:last').remove();
 					callback(false);
 				}
 			},
 			error: function(xhr) {
+				function escapeHtml(str) {
+					return $('<div>').text(str).html();
+				}
 				$spinner.replaceWith(link);
 				link.text('Pokušaj ponovo');
-				link.after('<p><b>Greška: ' + xhr.responseText + '</b></p>');
+				link.after('<p><b>Greška: ' + escapeHtml(xhr.responseText) + '</b></p>');
 				link.closest('td').find('p:last').remove();
 				callback(false);
 			}
@@ -180,20 +186,21 @@ jQuery(document).ready(function($) {
 	// KPD autosuggest on product edit page
 	if ($('#kpd').length) {
 		var kpdUrl = (typeof kpd_url !== 'undefined') ? kpd_url.url : '';
-		if (!kpdUrl) return;
-		$.getJSON(kpdUrl, function(kpdData) {
-			$('#kpd').select2({
-				placeholder: 'npr. 47.71.00',
-				allowClear: true,
-				minimumInputLength: 2,
-				data: kpdData.map(function(i) { return { id: i.kpd, text: i.kpd + ' – ' + i.opis }; }),
-				matcher: function(params, data) {
-					if (!params.term) return data;
-					var q = params.term.toLowerCase();
-					if (data.id.startsWith(q) || data.text.toLowerCase().includes(q)) return data;
-					return null;
-				}
+		if (kpdUrl) {
+			$.getJSON(kpdUrl, function(kpdData) {
+				$('#kpd').select2({
+					placeholder: 'npr. 47.71.00',
+					allowClear: true,
+					minimumInputLength: 2,
+					data: kpdData.map(function(i) { return { id: i.kpd, text: i.kpd + ' – ' + i.opis }; }),
+					matcher: function(params, data) {
+						if (!params.term) return data;
+						var q = params.term.toLowerCase();
+						if (data.id.startsWith(q) || data.text.toLowerCase().includes(q)) return data;
+						return null;
+					}
+				});
 			});
-		});
+		}
 	}
 });

@@ -49,43 +49,22 @@ function solo_woocommerce_timeago($datetime) {
 	return 'Upravo sada';
 }
 
+// Init main class
+$solo_woocommerce = new solo_woocommerce;
+
 // Version check only for users who can update plugins
 $version_check = get_transient('solo_woocommerce_tag');
 $tag = $installed = SOLO_VERSION;
 
 // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-if (($installed!=$version_check) && (!isset($_GET['update']))) {
-	// Read transient if exists
-	$tag = ltrim(get_transient('solo_woocommerce_tag'), 'v');
-
-	// Transient not found, fetch latest version from GitHub
-	if (!$version_check) {
-		$json = wp_remote_get('https://api.github.com/repos/coax/solo-for-woocommerce/releases',
-			array(
-				'timeout' => 10,
-				'blocking' => false,
-				'headers' => array(
-					'Accept' => 'application/json'
-				)
-			)
-		);
-		if (!is_wp_error($json)) {
-			$decoded_json = json_decode(wp_remote_retrieve_body($json), true);
-			if (isset($decoded_json[0]['name'])) {
-				$tag = ltrim($decoded_json[0]['name'], 'v');
-				$url = $decoded_json[0]['assets'][0]['browser_download_url'];
-
-				// Create temporary transients (instead session)
-				set_transient('solo_woocommerce_tag', $tag, 60*60*24);
-				set_transient('solo_woocommerce_url', $url, 60*60*24);
-			}
-		}
-	}
+if (($installed != $version_check) && (!isset($_GET['update']))) {
+	// Fetch latest version from GitHub (uses transient cache)
+	$tag = ltrim($solo_woocommerce->solo_woocommerce_fetch_github_version(), 'v');
 
 	// Display notice
 	if (version_compare($installed, $tag, '<') && current_user_can('update_plugins')) {
 ?>
-      <div class="notice notice-info notice-alt"><p><?php echo esc_html__('Dostupna je nova verzija dodatka', 'solo-for-woocommerce'); ?>: <a href="https://github.com/coax/solo-for-woocommerce/releases" target="_blank">Solo for WooCommerce <?php echo esc_html($tag); ?></a></p><p><a href="<?php echo esc_url(wp_nonce_url('admin.php?page=solo-woocommerce&update=true', 'solo_woocommerce_update_nonce')); ?>" class="button button-small button-primary"><?php echo esc_html__('Instaliraj novu verziju', 'solo-for-woocommerce'); ?></a></p></div>
+      <div class="notice notice-info notice-alt"><?php $solo_woocommerce->solo_woocommerce_update_notice($tag); ?></div>
 <?php
 	}
 }
@@ -94,11 +73,9 @@ if (($installed!=$version_check) && (!isset($_GET['update']))) {
 $default_tab = null;
 $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : $default_tab; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
-// Init main class
-$solo_woocommerce = new solo_woocommerce;
-
 // Define default variables
 $token = $tip_usluge = $jezik_ = $prikazi_porez = $tip_racuna = $rok_placanja = $napomene_racun = $napomene_ponuda = $iban = $akcija = $posalji = $naslov = $poruka = $kpd = '';
+$naslov_racun = $poruka_racun = $naslov_ponuda = $poruka_ponuda = '';
 
 // Create variables from settings
 $settings = get_option('solo_woocommerce_postavke');
@@ -107,6 +84,12 @@ if (!empty($settings)) {
 		${$key} = $option; // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound
 	}
 }
+
+// Backwards compatibility: use old shared naslov/poruka as fallback if new fields are empty
+if ($naslov_racun === '') $naslov_racun = $naslov;
+if ($poruka_racun === '') $poruka_racun = $poruka;
+if ($naslov_ponuda === '') $naslov_ponuda = $naslov;
+if ($poruka_ponuda === '') $poruka_ponuda = $poruka;
 ?>
 <div class="wrap">
   <form action="options.php" method="post">
@@ -224,10 +207,10 @@ switch($tab):
           </tr>
           <tr>
             <th>
-              <label for="rok_placanja"><?php echo esc_html__('KPD oznaka', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Ova KPD oznaka će se koristiti u svim stavkama narudžbe ako ne odabereš KPD oznaku u samom proizvodu.', 'solo-for-woocommerce'); ?>"></sup></label>
+              <label for="kpd_"><?php echo esc_html__('KPD oznaka', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Ova KPD oznaka će se koristiti u svim stavkama narudžbe ako ne odabereš KPD oznaku u samom proizvodu.', 'solo-for-woocommerce'); ?>"></sup></label>
             </th>
             <td>
-              <input type="text" name="solo_woocommerce_postavke[kpd]" value="<?php echo esc_attr($kpd); ?>" autocorrect="off" autocomplete="off" maxlength="8" placeholder="">
+              <input type="text" name="solo_woocommerce_postavke[kpd]" id="kpd_" value="<?php echo esc_attr($kpd); ?>" autocorrect="off" autocomplete="off" maxlength="8" placeholder="">
               <p class="description"><?php echo esc_html__('Prikazuje se samo na B2B računima.', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
@@ -481,16 +464,29 @@ switch($tab):
             </td>
           </tr>
           <tr>
-            <th><label for="naslov"><?php echo esc_html__('Naslov poruke', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Upiši naslov e-mail poruke koju će kupac dobiti.', 'solo-for-woocommerce'); ?>"></sup></label></th>
+            <th><label for="naslov_racun"><?php echo esc_html__('Naslov poruke (račun)', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Upiši naslov e-mail poruke koju će kupac dobiti uz račun.', 'solo-for-woocommerce'); ?>"></sup></label></th>
             <td>
-              <input type="text" name="solo_woocommerce_postavke[naslov]" id="naslov" value="<?php echo esc_attr($naslov); ?>" autocorrect="off" autocomplete="off" maxlength="100" placeholder="" class="regular-text">
+              <input type="text" name="solo_woocommerce_postavke[naslov_racun]" id="naslov_racun" value="<?php echo esc_attr($naslov_racun); ?>" autocorrect="off" autocomplete="off" maxlength="100" placeholder="" class="regular-text">
             </td>
           </tr>
           <tr>
-            <th><label for="poruka"><?php echo esc_html__('Sadržaj poruke', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Upiši sadržaj e-mail poruke koju će kupac dobiti.<br>HTML formatiranje nije podržano.', 'solo-for-woocommerce'); ?>"></sup></label></th>
+            <th><label for="poruka_racun"><?php echo esc_html__('Sadržaj poruke (račun)', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Upiši sadržaj e-mail poruke koju će kupac dobiti uz račun.<br>HTML formatiranje nije podržano.', 'solo-for-woocommerce'); ?>"></sup></label></th>
             <td>
-              <textarea name="solo_woocommerce_postavke[poruka]" id="poruka" rows="8" class="large-text"><?php echo esc_textarea($poruka); ?></textarea>
-              <p class="description">*<?php echo esc_html__('PDF kopija dokumenta će automatski biti u privitku', 'solo-for-woocommerce'); ?></p>
+              <textarea name="solo_woocommerce_postavke[poruka_racun]" id="poruka_racun" rows="8" class="large-text"><?php echo esc_textarea($poruka_racun); ?></textarea>
+              <p class="description">*<?php echo esc_html__('PDF kopija računa će automatski biti u privitku', 'solo-for-woocommerce'); ?></p>
+            </td>
+          </tr>
+          <tr>
+            <th><label for="naslov_ponuda"><?php echo esc_html__('Naslov poruke (ponuda)', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Upiši naslov e-mail poruke koju će kupac dobiti uz ponudu.', 'solo-for-woocommerce'); ?>"></sup></label></th>
+            <td>
+              <input type="text" name="solo_woocommerce_postavke[naslov_ponuda]" id="naslov_ponuda" value="<?php echo esc_attr($naslov_ponuda); ?>" autocorrect="off" autocomplete="off" maxlength="100" placeholder="" class="regular-text">
+            </td>
+          </tr>
+          <tr>
+            <th><label for="poruka_ponuda"><?php echo esc_html__('Sadržaj poruke (ponuda)', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Upiši sadržaj e-mail poruke koju će kupac dobiti uz ponudu.<br>HTML formatiranje nije podržano.', 'solo-for-woocommerce'); ?>"></sup></label></th>
+            <td>
+              <textarea name="solo_woocommerce_postavke[poruka_ponuda]" id="poruka_ponuda" rows="8" class="large-text"><?php echo esc_textarea($poruka_ponuda); ?></textarea>
+              <p class="description">*<?php echo esc_html__('PDF kopija ponude će automatski biti u privitku', 'solo-for-woocommerce'); ?></p>
             </td>
           </tr>
         </tbody>
@@ -510,20 +506,21 @@ switch($tab):
 
 	case 'arhiva':
 
-		// Check for table in database
+		// Check for table in database (cached, same pattern as solo_woocommerce_process_order())
 		global $wpdb;
-		$table_name = $wpdb->prefix . 'solo_woocommerce';
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name))!=$table_name) {
-			// Create table if doesn't exist
-			solo_woocommerce_create_table();
+		$table_name = esc_sql($wpdb->prefix . 'solo_woocommerce');
+		if (!get_transient('solo_woocommerce_table_exists')) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
+				solo_woocommerce_create_table();
+			} else {
+				set_transient('solo_woocommerce_table_exists', 1, DAY_IN_SECONDS);
+			}
 		}
 
 		// Read from database
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$results = $wpdb->get_results(
-			$wpdb->prepare("SELECT * FROM `%1s` ORDER BY id DESC", $table_name) // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnquotedComplexPlaceholder
-		);
+		$results = $wpdb->get_results("SELECT * FROM `{$table_name}` ORDER BY id DESC");
 
 		if (!empty($results)) {
 ?>
@@ -598,6 +595,8 @@ switch($tab):
 ?>
       <p><?php echo wp_kses_post(__('Za tehničku podršku molimo te da koristiš opciju <a href="https://solo.com.hr/podrska" target="_blank">Kontaktiraj podršku</a> izravno iz servisa Solo.', 'solo-for-woocommerce')); ?></p>
       <p><?php echo esc_html__('Imaš instaliranu verziju', 'solo-for-woocommerce'); ?> <b><?php echo esc_html(SOLO_VERSION); ?></b></p>
+      <p><a href="<?php echo esc_url(wp_nonce_url('admin.php?page=solo-woocommerce&purge=true', 'solo_woocommerce_purge_nonce')); ?>" class="button button-small" onclick="return confirm('<?php echo esc_js(__('Potvrdi brisanje svih zapisa koje je dodatak kreirao u bazi:', 'solo-for-woocommerce')); ?>')"><?php echo esc_html__('Resetiraj dodatak', 'solo-for-woocommerce'); ?></a></p>
+      <p><a href="<?php echo esc_url(wp_nonce_url('plugins.php?action=deactivate&plugin=solo-for-woocommerce/solo-woocommerce.php', 'deactivate-plugin_solo-for-woocommerce/solo-woocommerce.php')); ?>" class="button button-small"><?php echo esc_html__('Deaktiviraj dodatak', 'solo-for-woocommerce'); ?></a></p>
 <?php
 		// Path to wp-config.php
 		$wp_config_file = ABSPATH . 'wp-config.php';
