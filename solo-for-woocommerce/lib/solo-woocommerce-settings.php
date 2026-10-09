@@ -9,48 +9,50 @@ function solo_woocommerce_timeago($datetime) {
 	if (empty($datetime) || $datetime === '0000-00-00 00:00:00') return '';
 
 	try {
-		$dt = new DateTime($datetime, new DateTimeZone('Europe/Zagreb'));
+		// Stored dates use the site's timezone (current_time('mysql'))
+		$dt = new DateTime($datetime, wp_timezone());
 	} catch (Exception $e) {
 		return '';
 	}
 
 	$seconds_ago = time() - $dt->getTimestamp();
 
-	// Future dates or invalid
-	if ($seconds_ago < 0) return '';
-
-	// Older than a day — don't show relative time
-	if ($seconds_ago >= 86400) return '';
+	// Future dates, or older than a day - don't show relative time
+	if ($seconds_ago < 0 || $seconds_ago >= 86400) return '';
 
 	if ($seconds_ago >= 3600) {
 		$when = intval($seconds_ago / 3600);
-		if ($when == 1) {
-			$suffix = ' sat';
-		} elseif ($when < 5) {
-			$suffix = ' sata';
-		} else {
-			$suffix = ' sati';
-		}
-		return 'Prije ' . $when . $suffix;
+		$form = solo_woocommerce_plural_form($when);
+		// translators: %d is the number of hours
+		if ($form === 0) return sprintf(__('Prije %d sat', 'solo-for-woocommerce'), $when);
+		// translators: %d is the number of hours
+		if ($form === 1) return sprintf(__('Prije %d sata', 'solo-for-woocommerce'), $when);
+		// translators: %d is the number of hours
+		return sprintf(__('Prije %d sati', 'solo-for-woocommerce'), $when);
 	}
 
 	if ($seconds_ago >= 120) {
 		$when = intval($seconds_ago / 60);
-		if ($when < 5) {
-			$suffix = ' minute';
-		} else {
-			$suffix = ' minuta';
-		}
-		return 'Prije ' . $when . $suffix;
+		$form = solo_woocommerce_plural_form($when);
+		// translators: %d is the number of minutes
+		if ($form === 0) return sprintf(__('Prije %d minutu', 'solo-for-woocommerce'), $when);
+		// translators: %d is the number of minutes
+		if ($form === 1) return sprintf(__('Prije %d minute', 'solo-for-woocommerce'), $when);
+		// translators: %d is the number of minutes
+		return sprintf(__('Prije %d minuta', 'solo-for-woocommerce'), $when);
 	}
 
-	if ($seconds_ago >= 60) return 'Prije minutu';
+	if ($seconds_ago >= 60) return __('Prije minutu', 'solo-for-woocommerce');
 
-	return 'Upravo sada';
+	return __('Upravo sada', 'solo-for-woocommerce');
 }
 
-// Init main class
-$solo_woocommerce = new solo_woocommerce;
+// Croatian plural form: 0 = 1, 21, 31... / 1 = 2-4, 22-24... / 2 = everything else (5-20, 25-30...)
+function solo_woocommerce_plural_form($n) {
+	if ($n % 10 == 1 && $n % 100 != 11) return 0;
+	if ($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 12 || $n % 100 > 14)) return 1;
+	return 2;
+}
 
 // Version check only for users who can update plugins
 $version_check = get_transient('solo_woocommerce_tag');
@@ -59,12 +61,12 @@ $tag = $installed = SOLO_VERSION;
 // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 if (($installed != $version_check) && (!isset($_GET['update']))) {
 	// Fetch latest version from GitHub (uses transient cache)
-	$tag = ltrim($solo_woocommerce->solo_woocommerce_fetch_github_version(), 'v');
+	$tag = ltrim($this->solo_woocommerce_fetch_github_version(), 'v');
 
 	// Display notice
 	if (version_compare($installed, $tag, '<') && current_user_can('update_plugins')) {
 ?>
-      <div class="notice notice-info notice-alt"><?php $solo_woocommerce->solo_woocommerce_update_notice($tag); ?></div>
+      <div class="notice notice-info notice-alt"><?php $this->solo_woocommerce_update_notice($tag); ?></div>
 <?php
 	}
 }
@@ -74,7 +76,7 @@ $default_tab = null;
 $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : $default_tab; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 // Define default variables
-$token = $tip_usluge = $jezik_ = $prikazi_porez = $tip_racuna = $rok_placanja = $napomene_racun = $napomene_ponuda = $iban = $akcija = $posalji = $naslov = $poruka = $kpd = '';
+$token = $tip_usluge = $jezik_ = $tip_racuna = $rok_placanja = $napomene_racun = $napomene_ponuda = $iban = $akcija = $posalji = $naslov = $poruka = $kpd = '';
 $naslov_racun = $poruka_racun = $naslov_ponuda = $poruka_ponuda = '';
 
 // Create variables from settings
@@ -97,7 +99,7 @@ if ($poruka_ponuda === '') $poruka_ponuda = $poruka;
     <h1><div class="solo-logo"></div><?php echo esc_html(get_admin_page_title()); ?></h1>
     <p><?php echo esc_html__('Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.', 'solo-for-woocommerce'); ?></p>
     <nav class="nav-tab-wrapper">
-      <a href="?page=solo-woocommerce" class="nav-tab <?php if($tab===null):?>nav-tab-active<?php endif; ?>">API token</a>
+      <a href="?page=solo-woocommerce" class="nav-tab <?php if($tab===null):?>nav-tab-active<?php endif; ?>"><?php echo esc_html__('API token', 'solo-for-woocommerce'); ?></a>
 <?php if ($token) { ?>
       <a href="?page=solo-woocommerce&tab=postavke" class="nav-tab<?php if($tab==='postavke'):?> nav-tab-active<?php endif; ?>"><?php echo esc_html__('Solo postavke', 'solo-for-woocommerce'); ?></a>
       <a href="?page=solo-woocommerce&tab=akcije" class="nav-tab<?php if($tab==='akcije'):?> nav-tab-active<?php endif; ?>"><?php echo esc_html__('Načini plaćanja i akcije', 'solo-for-woocommerce'); ?></a>
@@ -115,7 +117,6 @@ if (!$token) $tab = $default_tab;
 switch($tab):
 	default:
 ?>
-      <input type="hidden" name="solo_woocommerce_postavke[prikazi_porez]" value="<?php echo esc_attr($prikazi_porez) ?>">
       <input type="hidden" name="solo_woocommerce_postavke[tip_racuna]" value="<?php echo esc_attr($tip_racuna) ?>">
       <input type="hidden" name="solo_woocommerce_postavke[posalji]" value="<?php echo esc_attr($posalji) ?>">
       <table class="form-table">
@@ -126,7 +127,7 @@ switch($tab):
             </th>
             <td class="mailserver-pass-wrap">
               <span class="wp-pwd">
-                <input type="password" name="solo_woocommerce_postavke[token]" id="token" value="<?php echo esc_attr($token); ?>" autocorrect="off" autocomplete="off" maxlength="33" placeholder="" class="regular-text" class="mailserver-pass-wrap">
+                <input type="password" name="solo_woocommerce_postavke[token]" id="token" value="<?php echo esc_attr($token); ?>" autocorrect="off" autocomplete="off" maxlength="33" placeholder="" class="regular-text">
                 <button type="button" class="button wp-hide-pw hide-if-no-js" id="toggle"><span class="dashicons dashicons-visibility"></span></button>
               </span>
               <p class="description"><?php if ($token==''): ?><?php echo esc_html__('Upiši i spremi promjene kako bi se prikazale ostale opcije.', 'solo-for-woocommerce'); ?><?php else: ?><a href="#" class="provjera"><?php echo esc_html__('Provjeri valjanost tokena', 'solo-for-woocommerce'); ?></a><?php endif; ?></p>
@@ -166,19 +167,6 @@ switch($tab):
               </select>
             </td>
           </tr>
-<!--
-          <tr>
-            <th>
-              <label for="prikazi_porez"><?php echo esc_html__('Prikaži porez', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Uključi ako želiš prikazati PDV na računu ili ponudi.', 'solo-for-woocommerce'); ?>"></sup></label>
-            </th>
-            <td>
-              <fieldset>
-                <label for="prikazi_porez"><input type="checkbox" name="solo_woocommerce_postavke[prikazi_porez]" id="prikazi_porez" value="1"<?php if ($prikazi_porez==1) echo ' checked="checked"' ?>> <?php echo esc_html__('Da', 'solo-for-woocommerce'); ?></label>
-                <p class="description"><?php echo esc_html__('Obavezno uključi ako si u sustavu PDV-a.', 'solo-for-woocommerce'); ?></p>
-              </fieldset>
-            </td>
-          </tr>
--->
           <tr>
             <th>
               <label for="tip_racuna"><?php echo esc_html__('Tip računa', 'solo-for-woocommerce'); ?><sup class="tooltip" title="<?php echo esc_html__('Odaberi zadani tip računa.', 'solo-for-woocommerce'); ?>">?</sup></label>
@@ -250,7 +238,6 @@ switch($tab):
 
 	case 'akcije':
 ?>
-      <input type="hidden" name="solo_woocommerce_postavke[prikazi_porez]" value="<?php echo esc_attr($prikazi_porez) ?>">
       <input type="hidden" name="solo_woocommerce_postavke[tip_racuna]" value="<?php echo esc_attr($tip_racuna) ?>">
       <input type="hidden" name="solo_woocommerce_postavke[posalji]" value="<?php echo esc_attr($posalji) ?>">
 <?php
@@ -359,7 +346,7 @@ switch($tab):
       <br>
       <div class="notice notice-info inline">
         <p><?php echo wp_kses_post(__('Akcija <b>"primiš narudžbu (bez uplate)"</b> se izvršava čim kupac napravi narudžbu neovisno o tipu plaćanja. Takve narudžbe će imati status <span class="status processing">Processing / U obradi</span> ili <span class="status on-hold">On hold / Na čekanju</span> u WooCommerce popisu narudžbi.', 'solo-for-woocommerce')); ?></p>
-        <p><?php echo wp_kses_post(__('Akcija <b>"kupac uplati"</b> se izvršava kada narudžbu obilježiš kao <span class="status completed">Completed / Završeno</span> u WooCommerce popisu narudžbi ili kada naplata karticom bude uspješna (trebalo bi automatski promijeniti status).', 'solo-for-woocommerce')); ?></p>
+        <p><?php echo wp_kses_post(__('Akcija <b>"kupac uplati"</b> se izvršava čim online naplata (npr. karticom ili PayPalom) bude uspješna. Kod uplate na transakcijski račun i plaćanja pouzećem izvršava se kada narudžbu obilježiš kao <span class="status completed">Completed / Završeno</span> u WooCommerce popisu narudžbi.', 'solo-for-woocommerce')); ?></p>
       </div>
       <?php submit_button(esc_html__('Spremi promjene', 'solo-for-woocommerce')); ?>
 <?php
@@ -444,6 +431,12 @@ switch($tab):
 				}
 			}
 
+			// Not in the list? Detect any mail plugin by what it does, not by its name
+			if (!$smtp_plugin_active) {
+				$wp_mail_file = wp_normalize_path((new ReflectionFunction('wp_mail'))->getFileName());
+				$smtp_plugin_active = has_action('phpmailer_init') || has_filter('pre_wp_mail') || strpos($wp_mail_file, wp_normalize_path(ABSPATH . WPINC)) === false;
+			}
+
 			if (!$smtp_plugin_active) {
 ?>
       <br>
@@ -451,7 +444,6 @@ switch($tab):
 <?php
 			}
 ?>
-      <input type="hidden" name="solo_woocommerce_postavke[prikazi_porez]" value="<?php echo esc_attr($prikazi_porez) ?>">
       <input type="hidden" name="solo_woocommerce_postavke[tip_racuna]" value="<?php echo esc_attr($tip_racuna) ?>">
       <table class="form-table">
         <tbody>
@@ -598,88 +590,75 @@ switch($tab):
       <p><a href="<?php echo esc_url(wp_nonce_url('admin.php?page=solo-woocommerce&purge=true', 'solo_woocommerce_purge_nonce')); ?>" class="button button-small" onclick="return confirm('<?php echo esc_js(__('Potvrdi brisanje svih zapisa koje je dodatak kreirao u bazi:', 'solo-for-woocommerce')); ?>')"><?php echo esc_html__('Resetiraj dodatak', 'solo-for-woocommerce'); ?></a></p>
       <p><a href="<?php echo esc_url(wp_nonce_url('plugins.php?action=deactivate&plugin=solo-for-woocommerce/solo-woocommerce.php', 'deactivate-plugin_solo-for-woocommerce/solo-woocommerce.php')); ?>" class="button button-small"><?php echo esc_html__('Deaktiviraj dodatak', 'solo-for-woocommerce'); ?></a></p>
 <?php
-		// Path to wp-config.php
-		$wp_config_file = ABSPATH . 'wp-config.php';
-		global $wp_filesystem;
-		if (empty($wp_filesystem)) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-			WP_Filesystem();
-		}
+		// Debug logging is on when both WP_DEBUG and WP_DEBUG_LOG are enabled
+		$is_debug_log = defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG;
 
-		// Read wp-config.php file contents
-		$config_contents = $wp_filesystem->get_contents($wp_config_file);
-		if ($config_contents === false) $config_contents = '';
-
-		// Check if both WP_DEBUG and WP_DEBUG_LOG are enabled
-		$is_wp_debug_enabled = strpos($config_contents, "define( 'WP_DEBUG', true );") !== false;
-		$is_wp_debug_log_enabled = strpos($config_contents, "define( 'WP_DEBUG_LOG', true );") !== false;
-
-		// Path to debug.log
-		$log_file = WP_CONTENT_DIR . '/debug.log';
+		// Log file: wp-content/debug.log by default, or a custom path set in WP_DEBUG_LOG (same logic as WordPress core)
+		$default_log = WP_CONTENT_DIR . '/debug.log';
+		$log_file = $default_log;
+		if (defined('WP_DEBUG_LOG') && is_string(WP_DEBUG_LOG) && !in_array(strtolower(WP_DEBUG_LOG), array('true', '1'), true)) $log_file = WP_DEBUG_LOG;
 
 		// Logging disabled
-		if (!$is_wp_debug_enabled || !$is_wp_debug_log_enabled) {
+		if (!$is_debug_log) {
 ?>
       <div class="notice notice-info inline">
         <p><?php echo wp_kses_post(__('Ako imaš problema s dodatkom, omogući <i>debugiranje</i> u WordPressu za dobivanje informacija o tome gdje i kako dolazi do greške. U <i>wp-config.php</i> datoteku dodaj ove linije:<br><code>define(\'WP_DEBUG\', true);</code><br><code>define(\'WP_DEBUG_LOG\', true);</code><br><code>define(\'WP_DEBUG_DISPLAY\', false);</code>', 'solo-for-woocommerce')); ?></p>
       </div>
 <?php
-		} else {
-			if (file_exists($log_file)) {
-				$filtered_lines = array();
+		} elseif (file_exists($log_file) && filesize($log_file) > 0) {
+			// Read only the last 512 KB - debug.log can grow to hundreds of MB
+			try {
+				$file = new SplFileObject($log_file, 'r');
+				$size = $file->getSize();
+				$file->fseek(max(0, $size - 524288));
+				$log_content = $file->fread(min($size, 524288));
+			} catch (Exception $e) {
+				$log_content = '';
+			}
 
-				// Parse log
-				global $wp_filesystem;
-				if (empty($wp_filesystem)) {
-					require_once ABSPATH . 'wp-admin/includes/file.php';
-					WP_Filesystem();
+			// Keep lines that start with date and time (format: [DD-Mon-YYYY HH:MM:SS UTC]) and mention this plugin
+			$filtered_lines = array();
+			foreach (explode("\n", (string) $log_content) as $line) {
+				if (preg_match('/^\[\d{2}-\w{3}-\d{4}(?: \d{2}:\d{2}:\d{2})?/', $line) && strpos($line, 'solo-woocommerce') !== false) {
+					$filtered_lines[] = $line;
 				}
-				$log_content = $wp_filesystem->get_contents($log_file);
-				if ($log_content !== false) {
-					foreach (explode("\n", $log_content) as $line) {
-						// Check if line starts with a date and time (format: [YYYY-MM-DD HH:MM:SS])
-						if (preg_match('/^\[\d{2}-\w{3}-\d{4}(?: \d{2}:\d{2}:\d{2})?/', $line, $matches)) {
-							if (strpos($line, 'solo-woocommerce') !== false) {
-								$filtered_lines[] = $line;
-							}
-						}
-					}
-				}
+			}
 
-				// Display filtered lines
-				if (!empty($filtered_lines)) {
+			// Display filtered lines
+			if (!empty($filtered_lines)) {
+				if ($log_file === $default_log) {
 ?>
       <p><?php
 					// translators: %s is the URL to the debug.log file.
 					echo wp_kses_post(sprintf(__('Greške iz <a href="%s" target="_blank">debug.log</a> datoteke:', 'solo-for-woocommerce'), esc_url(content_url('debug.log')))); ?></p>
 <?php
-					// Sort descending
-					rsort($filtered_lines);
+				} else {
+?>
+      <p><?php echo esc_html__('Greške iz debug.log datoteke:', 'solo-for-woocommerce'); ?></p>
+<?php
+				}
 
-					// Limit 50 logs
-					$filtered_lines = array_slice($filtered_lines, 0, 50);
+				// Newest first (the log is written chronologically), limit 50
+				$filtered_lines = array_slice(array_reverse($filtered_lines), 0, 50);
 
-					foreach ($filtered_lines as $filtered_line) {
-						// Extract date and time
-						preg_match('/\[(.*?)\]/', $filtered_line, $matches);
-						$date_time = isset($matches[1]) ? $matches[1] : '&ndash;';
+				foreach ($filtered_lines as $filtered_line) {
+					// Extract date and time
+					preg_match('/\[(.*?)\]/', $filtered_line, $matches);
+					$date_time = isset($matches[1]) ? $matches[1] : '&ndash;';
 
-						// Convert to Y-m-d H:i:s format
-						try {
-							$date = new DateTime($date_time);
-							 // Get WordPress timezone
-							$local_timezone = new DateTimeZone(wp_timezone_string());
-							$date->setTimezone($local_timezone);
-							$formatted_date_time = $date->format('Y-m-d H:i:s');
-						} catch (Exception $e) {
-							$formatted_date_time = '&ndash;';
-						}
-
-						// Extract error message (everything after date and time)
-						$error_message = trim(str_replace($matches[0], '', $filtered_line));
-
-						echo '<code>[' . esc_html($formatted_date_time) . '] ' . esc_html($error_message) . '</code><br>' . PHP_EOL;
+					// Convert to Y-m-d H:i:s in WordPress timezone
+					try {
+						$date = new DateTime($date_time);
+						$date->setTimezone(wp_timezone());
+						$formatted_date_time = $date->format('Y-m-d H:i:s');
+					} catch (Exception $e) {
+						$formatted_date_time = '&ndash;';
 					}
+
+					// Extract error message (everything after date and time)
+					$error_message = trim(str_replace($matches[0], '', $filtered_line));
+
+					echo '<code>[' . esc_html($formatted_date_time) . '] ' . esc_html($error_message) . '</code><br>' . PHP_EOL;
 				}
 			}
 		}
