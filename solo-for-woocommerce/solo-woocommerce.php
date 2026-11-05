@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 2.6
+ * Version: 2.7
  * Requires at least: 5.3
  * Tested up to: 7.1
  * Requires PHP: 7.2
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 }
 
 //// Variables
-define('SOLO_VERSION', '2.6');
+define('SOLO_VERSION', '2.7');
 define('SOLO_API_URL', 'https://api.solo.com.hr/');
 
 //// Activate plugin
@@ -1033,7 +1033,8 @@ class solo_woocommerce {
 			if ($item->get_variation_id()) {
 				$item_name = $product->get_title();
 				foreach ($item->get_meta_data() as $meta) {
-					if (empty($meta->id) || '' === $meta->value || !is_scalar($meta->value)) continue;
+					// Skip internal meta (keys starting with _), e.g. _reduced_stock - same rule WooCommerce uses on e-mails and order details
+					if (empty($meta->id) || '' === $meta->value || !is_scalar($meta->value) || '_' === substr($meta->key, 0, 1)) continue;
 					$meta->key = rawurldecode((string) $meta->key);
 					$meta->value = rawurldecode((string) $meta->value);
 					$attribute_key = str_replace('attribute_', '', $meta->key);
@@ -1050,7 +1051,11 @@ class solo_woocommerce {
 			}
 
 			$item_price = number_format(round($item->get_subtotal() / $item->get_quantity(), 2), 2, ',', '');
+			// Item discount in % (coupons, manual edits in admin, discount plugins): WooCommerce keeps the price before discount in subtotal and after discount in total
 			$item_discount = 0;
+			if ($item->get_subtotal() > 0 && $item->get_total() < $item->get_subtotal()) {
+				$item_discount = number_format(min(100, (1 - $item->get_total() / $item->get_subtotal()) * 100), 4, ',', '');
+			}
 			$item_quantity = str_replace('.', ',', $item_quantity);
 
 			$payload .= '&usluga=' . $i . PHP_EOL;
@@ -1067,46 +1072,9 @@ class solo_woocommerce {
 		return $payload;
 	}
 
-	//// Build coupons and shipping payload
+	//// Build fees and shipping payload (coupons are already included in item discounts)
 	private function build_extras_payload($order, &$i, $kpd = '', $tip_kupca = 1) {
 		$payload = '';
-
-		// Coupon KPD: the KPD of the first discounted product, or the default KPD
-		$coupon_kpd = '';
-		if ($tip_kupca == 2) {
-			foreach ($order->get_items() as $product_item) {
-				if ($product_item->get_subtotal() <= $product_item->get_total()) continue; // not discounted by a coupon
-				$coupon_kpd = get_post_meta($product_item->get_product_id(), '_solo_kpd', true);
-				if (!empty($coupon_kpd)) break;
-			}
-			if (empty($coupon_kpd)) $coupon_kpd = $kpd;
-		}
-
-		// Coupons
-		foreach ($order->get_items('coupon') as $item) {
-			$coupon_data = $item->get_data();
-			$coupon_price = $coupon_data['discount'];
-			$coupon_code = $coupon_data['code'];
-			$coupon_tax = $coupon_data['discount_tax'];
-			$coupon_price = $coupon_price + $coupon_tax;
-			$coupon_tax_rate = ($coupon_data['discount'] > 0) ? round(($coupon_tax / $coupon_data['discount']) * 100) : 0;
-			if (!in_array($coupon_tax_rate, [5, 13, 25])) $coupon_tax_rate = 0;
-
-			if ($coupon_price > 0) {
-				$i++;
-				$coupon_price = -1 * round($coupon_data['discount'], 2);
-				$coupon_price = number_format($coupon_price, 2, ',', '');
-
-				$payload .= '&usluga=' . $i . PHP_EOL;
-				if (!empty($coupon_kpd) && $tip_kupca == 2) $payload .= '&kpd_' . $i . '=' . urlencode($coupon_kpd) . PHP_EOL;
-				$payload .= '&opis_usluge_' . $i . '=' . urlencode(esc_html__('Kupon za popust', 'solo-for-woocommerce') . ' (' . $coupon_code . ')') . PHP_EOL;
-				$payload .= '&jed_mjera_' . $i . '=1' . PHP_EOL;
-				$payload .= '&cijena_' . $i . '=' . $coupon_price . PHP_EOL;
-				$payload .= '&kolicina_' . $i . '=1' . PHP_EOL;
-				$payload .= '&popust_' . $i . '=0' . PHP_EOL;
-				$payload .= '&porez_stopa_' . $i . '=' . $coupon_tax_rate . PHP_EOL;
-			}
-		}
 
 		// Fees
 		foreach ($order->get_items('fee') as $item) {
