@@ -3,7 +3,7 @@
  * Plugin Name: Solo for WooCommerce
  * Plugin URI: https://solo.com.hr/api-dokumentacija/dodaci
  * Description: Narudžba u tvojoj WooCommerce trgovini će automatski kreirati račun ili ponudu u servisu Solo.
- * Version: 2.7
+ * Version: 2.8
  * Requires at least: 5.3
  * Tested up to: 7.1
  * Requires PHP: 7.2
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 }
 
 //// Variables
-define('SOLO_VERSION', '2.7');
+define('SOLO_VERSION', '2.8');
 define('SOLO_API_URL', 'https://api.solo.com.hr/');
 
 //// Activate plugin
@@ -69,6 +69,9 @@ register_deactivation_hook(__FILE__, 'solo_woocommerce_deactivate');
 function solo_woocommerce_deactivate() {
 	// Delete exchange rate from database and remove scheduled job
 	solo_woocommerce_exchange(4);
+
+	// Cancel pending retries and PDF e-mails
+	if (function_exists('as_unschedule_all_actions')) as_unschedule_all_actions('', array(), 'solo-for-woocommerce');
 
 	// Delete temporary transients
 	delete_transient('solo_woocommerce_tag');
@@ -239,8 +242,29 @@ function solo_woocommerce_create_table() {
 	}
 }
 
-//// Call Solo API to create document, returns array('status' => ..., 'message' => ...)
 function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type) {
+	global $wpdb;
+	$table_name = esc_sql($wpdb->prefix . 'solo_woocommerce');
+
+	// Only one request per order at a time - a lock per site and order, released automatically if PHP stops
+	$lock = 'solo_' . md5(DB_NAME . $wpdb->prefix . $order_id);
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+	if ($wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 0)', $lock)) === '0') {
+		$busy = __('Narudžba se upravo šalje u Solo.', 'solo-for-woocommerce');
+		return array('status' => -2, 'message' => $busy, 'response' => wp_json_encode(array('status' => -2, 'message' => $busy), JSON_UNESCAPED_UNICODE));
+	}
+
+	// Never send an order again once Solo has created its document (a retry can run twice, or after "Pokušaj ponovo")
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$stored = $wpdb->get_col($wpdb->prepare("SELECT api_response FROM {$table_name} WHERE order_id = %d", $order_id));
+	foreach ($stored as $stored_response) {
+		$stored_json = json_decode((string) $stored_response, true);
+		if (isset($stored_json['status']) && $stored_json['status'] == 0) {
+			$wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock)); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			return array('status' => 0, 'message' => $stored_json['message'] ?? '', 'response' => $stored_response);
+		}
+	}
+
 	// Make API call
 	$api_response = wp_remote_post($url, array(
 			'body' => $api_request,
@@ -262,8 +286,6 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 	}
 
 	// Save API response to our table
-	global $wpdb;
-	$table_name = $wpdb->prefix . 'solo_woocommerce';
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	$wpdb->update(
 		$table_name,
@@ -285,10 +307,10 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 
 	if ($status == 0 && isset($pdf)) {
 		// Download and send PDF
-		wp_schedule_single_event(time() + 5, 'solo_woocommerce_api_get', array($pdf, $order_id, $document_type));
+		solo_woocommerce_schedule(time() + 5, 'solo_woocommerce_api_get', array($pdf, $order_id, $document_type));
 	} elseif ($status == 100) {
-		// Retry after 10 seconds
-		wp_schedule_single_event(time() + 10, 'solo_woocommerce_api_post', array($url, $api_request, $order_id, $document_type));
+		// Retry after 10 seconds - the job carries only the order number, the request is read from the archive
+		solo_woocommerce_schedule(time() + 10, 'solo_woocommerce_api_retry', array($order_id, $document_type));
 	}
 
 	// Order note - result visible directly on the order (not for status 100, it is retried automatically)
@@ -309,7 +331,32 @@ function solo_woocommerce_api_post($url, $api_request, $order_id, $document_type
 		$order->add_order_note($note);
 	}
 
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+	$wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+
 	return array('status' => (int) $status, 'message' => $message, 'response' => $api_response);
+}
+
+//// Retry sending an order (scheduled when Solo answers status 100)
+function solo_woocommerce_api_retry($order_id, $document_type) {
+	global $wpdb;
+	$table_name = esc_sql($wpdb->prefix . 'solo_woocommerce');
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$stored = (string) $wpdb->get_var($wpdb->prepare("SELECT api_request FROM {$table_name} WHERE order_id = %d ORDER BY id DESC LIMIT 1", $order_id));
+	// Archive keeps "POST <url>" in the first line and the request below it
+	$parts = explode(PHP_EOL, $stored, 2);
+	if (empty($parts[1])) return;
+	solo_woocommerce_api_post(SOLO_API_URL . $document_type, str_replace(PHP_EOL, '', $parts[1]), $order_id, $document_type);
+}
+
+//// Schedule a background job - WooCommerce Action Scheduler keeps every job in its own database row, so jobs are not lost
+//// or run twice when several orders are processed at once (WP-Cron keeps all jobs in one option); WP-Cron only as fallback
+function solo_woocommerce_schedule($timestamp, $hook, $args) {
+	if (function_exists('as_schedule_single_action')) {
+		as_schedule_single_action($timestamp, $hook, $args, 'solo-for-woocommerce');
+	} else {
+		wp_schedule_single_event($timestamp, $hook, $args);
+	}
 }
 
 //// Download PDF and send e-mail to buyer
@@ -404,7 +451,7 @@ class solo_woocommerce {
 
 		// Scheduled jobs
 		add_action('solo_woocommerce_exchange_update', 'solo_woocommerce_exchange');
-		add_action('solo_woocommerce_api_post', 'solo_woocommerce_api_post', 1, 4);
+		add_action('solo_woocommerce_api_retry', 'solo_woocommerce_api_retry', 1, 2);
 		add_action('solo_woocommerce_api_get', 'solo_woocommerce_api_get', 2, 3);
 
 		// WooCommerce: process order
